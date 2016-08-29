@@ -942,16 +942,19 @@ def place_objects(room):
 	item_chances['confuse'] = from_dungeon_level([[10, 2]])
 	item_chances['longsword'] = from_dungeon_level([[5, 4]])
 	item_chances['shield'] = from_dungeon_level([[15, 8]])
+	item_chances['recharge'] = from_dungeon_level([[10, 3]])
 	item_chances['w_mmissile'] = from_dungeon_level([[10, 4]])
 	item_chances['w_confusion'] = from_dungeon_level([[10, 3]])
 	item_chances['w_fireball'] = from_dungeon_level([[5, 6]])
 	item_chances['w_lightning'] = from_dungeon_level([[5, 5]])
 	item_chances['w_death'] = from_dungeon_level([[3, 8]])
+	item_chances['w_warp'] = from_dungeon_level([[10, 3]])
 	item_chances['w2_mmissile'] = from_dungeon_level([[10, 10]])
 	item_chances['w2_confusion'] = from_dungeon_level([[10, 10]])
 	item_chances['w2_fireball'] = from_dungeon_level([[5, 12]])
 	item_chances['w2_lightning'] = from_dungeon_level([[5, 11]])
 	item_chances['w2_death'] = from_dungeon_level([[3, 13]])
+	item_chances['w2_warp'] = from_dungeon_level([[10, 8]])
 	
 
 	#choose a random number of monsters
@@ -1010,6 +1013,10 @@ def place_objects(room):
 				#create a healing potion
 				item_component = Item(use_function=cast_heal)
 				item = Object(x, y, '!', 'healing potion', libtcod.pink, item=item_component)
+			elif choice == 'recharge':
+				#create a recharge potion
+				item_component = Item(use_function=cast_recharge)
+				item = Object(x, y, '!', 'recharge potion', libtcod.light_blue, item=item_component)
 			elif choice == 'lightning':
 				#create a lightning bolt scroll
 				item_component = Item(use_function=cast_lightning)
@@ -1022,6 +1029,10 @@ def place_objects(room):
 				#create a confuse scroll
 				item_component = Item(use_function=cast_confuse)
 				item = Object(x, y, '#', 'scroll of confusion', libtcod.light_yellow, item=item_component)
+			elif choice == 'warp':
+				#create a warp scroll
+				item_component = Item (use_function=cast_warp)
+				item = Object(x, y, '#', 'scroll of teleportation', libtcod.light_yellow, item=item_component)
 			elif choice == 'antidote':
 				#create an antidote:
 				item_component = Item(use_function=cast_antidote)
@@ -1054,6 +1065,10 @@ def place_objects(room):
 				#WAND TEST 9: wand of death
 				wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
 				obj = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
+			elif choice == 'w_warp':
+				#WAND TEST 10: wand of teleportation
+				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
+				obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 			elif choice == 'w2_mmissile':
 				#WAND TEST4: fine wand of magic missile
 				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
@@ -1071,9 +1086,13 @@ def place_objects(room):
 				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_fireball)
 				obj = Object(0, 0, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
 			elif choice == 'w2_death':
-				#WAND TEST 9: wand of death
+				#WAND TEST 9: ornate wand of death
 				wand_component = Wand(charges=7, max_charges=10, zap_function=cast_death)
 				obj = Object(0, 0, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
+			elif choice == 'w2_warp':
+				#WAND TEST 10: fine wand of teleportation
+				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_warp)
+				obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 				
 			
 			objects.append(item)
@@ -1541,6 +1560,17 @@ def target_monster(max_range=None):
 		for obj in objects:
 			if obj.x == x and obj.y == y and obj.fighter and obj != player:
 				return obj
+				
+def target_monster_or_player(max_range=None):
+	#returns a clicked monster inside FOV up to a range, or None if right-clicked
+	while True:
+		(x, y) = target_tile(max_range)
+		if x is None: #player cancelled
+			return None
+		#return the first clicked monster, otherwise keep looping
+		for obj in objects:
+			if obj.x == x and obj.y == y and obj.fighter:
+				return obj
 
 def random_choice_index(chances): #choose an object from a list of chances returning the index
 	dice = libtcod.random_get_int(0, 1, sum(chances))
@@ -1576,6 +1606,32 @@ def cast_heal():
 	
 	message('Your wounds start to feel better!', libtcod.pink)
 	player.fighter.heal(HEAL_AMOUNT)
+	
+def cast_recharge():
+	#recharge a selected wand
+	wand_list = []
+	menu_options = []
+	for item in inventory:
+		if item.wand is not None:
+			wand_list.append(item)
+	if len(wand_list) == 0:
+		message('No wands in inventory.', libtcod.red)
+		return 'cancelled'
+	else:
+		for wand in wand_list:
+			text = wand.name + ' (' + str(wand.wand.charges) + ')'
+			menu_options.append(text)
+	#libtcod.console_flush()
+	render_all()
+	time.sleep(0.5)
+	index = menu('Choose a wand to zap:', menu_options, INVENTORY_WIDTH)
+	if index is None: return 'cancelled'
+	wand_list[index].wand.charges += 5
+	if wand_list[index].wand.charges > wand_list[index].wand.max_charges:
+		wand_list[index].wand.charges = wand_list[index].wand.max_charges
+	message(wand_list[index].name.capitalize() + ' recharged.  Current charges: ' + str(wand_list[index].wand.charges), libtcod.light_blue)
+	
+	
 	
 def cast_antidote():
 	#get rid of poison status
@@ -1616,6 +1672,25 @@ def cast_death():
 	message(monster.name.capitalize() + ' dies instantly, its soul banished from existence.', libtcod.grey)
 	death_strike = monster.fighter.hp
 	monster.fighter.take_damage(death_strike)
+	
+def cast_warp():
+	#warp: target creature in FOV gets warped away to a random location
+	message('Choose a target to be teleported:', libtcod.light_blue)
+	monster = target_monster_or_player()
+	if monster is None:
+		message('No valid target found!', libtcod.red)
+		return 'didnt-take-turn'
+	else:
+		#do the teleport
+		warpx = libtcod.random_get_int(0, 1, MAP_WIDTH)
+		warpy = libtcod.random_get_int(0, 1, MAP_HEIGHT)
+		while is_blocked(warpx, warpy):
+			warpx = libtcod.random_get_int(0, 1, MAP_WIDTH)
+			warpy = libtcod.random_get_int(0, 1, MAP_HEIGHT)
+		monster.x = warpx
+		monster.y = warpy
+		message(monster.name.capitalize() + ' suddenly teleports away in a vortex of swirling purple light.', libtcod.light_blue)
+		#message('New location of creature: ' + str(monster.x) + ', ' + str(monster.y), libtcod.light_blue)
 	
 
 	
@@ -1788,6 +1863,18 @@ def new_game(choice):
 		obj = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
 		inventory.append(obj)
 		obj.always_visible = True
+		
+		#recharge potion test
+		#create a recharge potion
+		item_component = Item(use_function=cast_recharge)
+		obj = Object(0, 0, '!', 'recharge potion', libtcod.light_blue, item=item_component)
+		inventory.append(obj)
+		
+		# #WAND TEST 10: wand of teleportation
+		# wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
+		# obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+		# inventory.append(obj)
+		# obj.always_visible = True
 		
 		# #WAND TEST 2: wand of lightning
 		# wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
@@ -1962,6 +2049,8 @@ def main_menu():
 #############################################
 # Initialization & Main Loop
 #############################################
+
+#run command for Notepad++ "C:\Python27\debugpy.bat" "$(CURRENT_DIRECTORY)" $(FILE_NAME)
  
 libtcod.console_set_custom_font('terminal8x8_aa_tc.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD)
 #libtcod.console_set_custom_font('tiledFont6.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD, 32, 24) #TILES VERSION
