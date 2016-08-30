@@ -949,12 +949,14 @@ def place_objects(room):
 	item_chances['w_lightning'] = from_dungeon_level([[5, 5]])
 	item_chances['w_death'] = from_dungeon_level([[3, 8]])
 	item_chances['w_warp'] = from_dungeon_level([[10, 3]])
+	item_chances['w_petrify'] = from_dungeon_level([[10, 5]])
 	item_chances['w2_mmissile'] = from_dungeon_level([[10, 10]])
 	item_chances['w2_confusion'] = from_dungeon_level([[10, 10]])
 	item_chances['w2_fireball'] = from_dungeon_level([[5, 12]])
 	item_chances['w2_lightning'] = from_dungeon_level([[5, 11]])
 	item_chances['w2_death'] = from_dungeon_level([[3, 13]])
 	item_chances['w2_warp'] = from_dungeon_level([[10, 8]])
+	item_chances['w2_petrify'] = from_dungeon_level([[10, 10]])
 	
 
 	#choose a random number of monsters
@@ -1069,6 +1071,10 @@ def place_objects(room):
 				#WAND TEST 10: wand of teleportation
 				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
 				obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+			elif choice == 'w_petrify':
+				#WAND TEST 11: wand of petrification
+				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_petrify)
+				obj = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
 			elif choice == 'w2_mmissile':
 				#WAND TEST4: fine wand of magic missile
 				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
@@ -1093,6 +1099,10 @@ def place_objects(room):
 				#WAND TEST 10: fine wand of teleportation
 				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_warp)
 				obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+			elif choice == 'w2_petrify':
+				#WAND TEST 12: wand of petrification
+				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_petrify)
+				obj = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
 				
 			
 			objects.append(item)
@@ -1673,6 +1683,31 @@ def cast_death():
 	death_strike = monster.fighter.hp
 	monster.fighter.take_damage(death_strike)
 	
+def cast_petrify():
+	#global player 
+	#ask player for a target to petrify
+	message('Left click on an enemy to cast petrify, or right click/ESC to cancel.', libtcod.light_cyan)
+	monster = target_monster()
+	if monster is None: return 'cancelled'
+	message(monster.name.capitalize() + ' gets turned into solid stone.', libtcod.sepia)
+	#transform monster into a statue! no more moves or attacks, can't be attacked
+	message(monster.name.capitalize() + ' is petrified! You gained ' + str(int(monster.fighter.xp / 2)) + ' experience points.', libtcod.orange)
+	player.fighter.xp += int(monster.fighter.xp / 2)
+	monster.color = libtcod.sepia
+	fighter_component = Fighter(monster.x, monster.y, hp=25, defense=0, power=0, ranged=0, quiver=0, xp=0, death_function=statue_crumble)
+	monster.fighter = fighter_component
+	monster.fighter.owner = monster
+	monster.ai = None
+	monster.name = 'Statue of ' + monster.name.capitalize()
+	
+def statue_crumble(self):
+	#let a petrified enemy crumble into rocks
+	self.char = '*'
+	self.blocks = False
+	self.fighter = None
+	self.name = 'pile of rocks'
+	
+	
 def cast_warp():
 	#warp: target creature in FOV gets warped away to a random location
 	message('Choose a target to be teleported:', libtcod.light_blue)
@@ -1861,6 +1896,12 @@ def new_game(choice):
 		#WAND TEST: wand of magic missile
 		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
 		obj = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
+		inventory.append(obj)
+		obj.always_visible = True
+		
+		#WAND TEST 11: wand of petrification
+		wand_component = Wand(charges=5, max_charges=20, zap_function=cast_petrify)
+		obj = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
 		inventory.append(obj)
 		obj.always_visible = True
 		
