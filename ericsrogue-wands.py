@@ -36,7 +36,7 @@ ROOM_MIN_SIZE = 6
 MAX_ROOMS = 30
 
 #BSP dungeon parameters
-DEPTH = 10
+DEPTH = 8
 MIN_SIZE = 7
 FULL_ROOMS = False
 
@@ -146,6 +146,56 @@ class Object:
 			self.wand.owner = self
 			self.item = Item()
 			self.item.owner = self
+			
+	def monster_mutator(self, mut_strength):
+		last_mut = 0
+		for mutation in range(mut_strength):
+			mut_choice = libtcod.random_get_int(0, 1, 6)
+			if mut_choice == last_mut:
+				mut_choice -= 1
+			if mut_choice == 6 and 'naga' in self.name:
+				mut_choice -= 1
+			if mut_choice == 6:
+				self.fighter.base_ranged += 4
+				self.fighter.xp += 35
+				self.ai = PoisonSpitterAI()
+				self.ai.owner = self
+				self.color += libtcod.violet
+				self.name = 'venomous ' + self.name
+				last_mut = 6
+			if mut_choice == 5:
+				self.fighter.max_hp += 20
+				self.fighter.hp += 20
+				self.fighter.xp += 30
+				self.color += libtcod.gold
+				self.name = 'golden ' + self.name
+				last_mut = 5
+			if mut_choice == 4:
+				self.fighter.max_hp += 10
+				self.fighter.hp += 10
+				self.fighter.defense += 2
+				self.color += libtcod.dark_sepia
+				self.name = 'cave ' + self.name
+				last_mut = 4
+			if mut_choice == 3:
+				self.fighter.base_power += 4
+				self.fighter.base_ranged += 4
+				self.fighter.xp += 25
+				self.color += libtcod.orange
+				self.name = 'hellfire ' + self.name
+				last_mut = 3
+			if mut_choice == 2:
+				self.fighter.base_defense += 4
+				self.fighter.xp += 15
+				self.color += libtcod.dark_grey
+				self.name = 'armored ' + self.name
+				last_mut = 1
+			if mut_choice == 1:
+				self.fighter.power += 2
+				self.fighter.defense += 2
+				self.fighter.xp += 15
+				self.color += libtcod.dark_yellow
+				self.name = 'dire ' + self.name
 
 	def move(self, dx, dy):
 		if not is_blocked(self.x + dx, self.y + dy):
@@ -329,10 +379,10 @@ class Fighter:
 		
 		if self.AttackRoll(target.fighter) == 'hit':
 			#make target take damage
-			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' damage.', libtcod.white)
+			message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(damage) + ' damage.', libtcod.white)
 			target.fighter.take_damage(damage)
 		elif self.AttackRoll(target.fighter) == 'miss':
-			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but misses.', libtcod.white)
+			message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but misses.', libtcod.white)
 			
 	def ranged_attack(self, target):
 		#simple formula for ranged damage -- to change later
@@ -342,15 +392,15 @@ class Fighter:
 		if self.quiver > 0: 
 			if self.ranged_attack_roll(target.fighter) == 'hit':
 				#make target take damage
-				message(self.owner.name.capitalize() + ' fires an arrow at ' + target.name + ' for ' + str(damage) + ' damage.', libtcod.green)
+				message(self.owner.name.title() + ' fires an arrow at ' + target.name + ' for ' + str(damage) + ' damage.', libtcod.green)
 				target.fighter.take_damage(damage)
 				self.quiver -= 1
 			elif self.ranged_attack_roll(target.fighter) == 'miss':
-				message(self.owner.name.capitalize() + ' fires an arrow at ' + target.name + ' but it misses!', libtcod.green)
+				message(self.owner.name.title() + ' fires an arrow at ' + target.name + ' but it misses!', libtcod.green)
 				self.quiver -= 1
 			#message('Orc quiver status: ' + str(self.quiver) + ' arrows!', libtcod.white)
 		elif self.quiver <= 0:
-			message(self.name + ' ran out of arrows!', libtcod.green)
+			message(self.name.title() + ' ran out of arrows!', libtcod.green)
 			return 'didnt-take-turn'
 		elif get_equipped_in_slot('bow') is None and self.owner == player:
 			message('You need a ranged weapon first!', libtcod.red)
@@ -393,6 +443,9 @@ class Fighter:
 			return 'hit'
 		else:
 			return 'miss'
+			
+	
+			
 
 class BasicMonster:
 	#AI for a basic monster
@@ -416,11 +469,12 @@ class WolfAI:
 			if monster.distance_to(player) >= 2:
 				monster.move_astar(player)
 			elif monster.fighter.hp <= 5 and monster.distance_to(player) <= 5 and monster.fighter.enraged == False:
-				message('The wolf howls with rage!', libtcod.red)
+				message('The ' + monster.name.title() + ' howls with rage!', libtcod.red)
 				monster.fighter.enraged = True
-				monster.fighter.power += 1
+				monster.fighter.power += 2
 				monster.color = libtcod.red
-				packmate = closest_packmate(monster, 30)
+				monster.fighter.attack(player)
+				packmate = closest_packmate(monster, 20)
 				if packmate is not None:
 					packmate.ai = AngryWolf
 					packmate.ai.owner = packmate
@@ -434,10 +488,10 @@ class PoisonSpitterAI:
 		monster = self.owner
 		if monster.distance_to(player) <= 15 and monster.distance_to(player) > 5:
 			monster.move_astar(player)
-			if libtcod.random_get_int(0, 1, 6) < 3:
-				message('You hear a rattling in the distance....', libtcod.yellow)
+			if libtcod.random_get_int(0, 1, 6) < 2:
+				message('You hear a hissing sound in the distance....', libtcod.yellow)
 		elif monster.distance_to(player) <= 5 and player.fighter.poisoned == False and libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
-				message('The ' + monster.name + ' spits poison at you!', libtcod.purple)
+				message('The ' + monster.name.title() + ' spits poison at you!', libtcod.purple)
 				if monster.fighter.ranged_attack_roll(player.fighter) == 'hit':
 					message('The poison spit drips all over you!  You don\'t feel well...', libtcod.purple)
 					player.fighter.poisoned = True
@@ -457,10 +511,13 @@ class ArcherAI:
 		range = monster.distance_to(player)
 		if range <=15 and range > 7:
 			monster.move_astar(player)
-		elif range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
-			monster.fighter.ranged_attack(player)
-			if monster.fighter.quiver == 0:
-				message('The ' + monster.name + ' ran out of arrows!', libtcod.green)
+		elif 3 <= range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
+			if libtcod.random_get_int(0, 1, 4) >= 2:
+				monster.fighter.ranged_attack(player)
+				if monster.fighter.quiver == 0:
+					message('The ' + monster.name.title() + ' ran out of arrows!', libtcod.green)
+			else:
+				monster.move_astar(player)
 		elif range <= 7 and not libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			monster.move_astar(player)
 		elif monster.fighter.quiver <= 0 and range >= 2:
@@ -472,8 +529,11 @@ class AngryWolf:
 	#AI for wolf awoken by a packmate's howl -- they'll charge in from up to 25 tiles away!
 	def take_turn(self):
 		monster = self.owner
+		monster.fighter.enraged = True
+		monster.fighter.power += 2
+		monster.color = libtcod.red
 		range = monster.distance_to(player)
-		if range <=16 and range >= 2:
+		if range <=20 and range >= 2:
 			move_astar_player
 		if range < 2:
 			monster.fighter.attack(player)
@@ -495,7 +555,7 @@ class ConfusedMonster:
 			self.num_turns -= 1
 		else: #restore previous AI
 			self.owner.ai = self.old_ai
-			message('The ' + self.owner.name + ' is no longer confused!', libtcod.red)
+			message('The ' + self.owner.name.title() + ' is no longer confused!', libtcod.red)
 
 class Item:
 	#an item that can be picked up and used
@@ -506,11 +566,11 @@ class Item:
 		arrows = self.owner.arrows
 		#add to player's inventory and remove from the map
 		if len(inventory) >= 26 and not arrows:
-			message('Your inventory is full, cannot pick up ' + self.owner.name + '.', libtcod.red)
+			message('Your inventory is full, cannot pick up ' + self.owner.name.title() + '.', libtcod.red)
 		elif not arrows:
 			inventory.append(self.owner)
 			objects.remove(self.owner)
-			message('You picked up a ' + self.owner.name + '!', libtcod.green)
+			message('You picked up a ' + self.owner.name.title() + '!', libtcod.green)
 		#special case: if item is Equipment, automatically equip if slot is open
 		equipment = self.owner.equipment
 		if equipment and get_equipped_in_slot(equipment.slot) is None:
@@ -545,7 +605,7 @@ class Item:
 		
 		#just call the use_function if it is defined
 		if self.use_function is None:
-			message('The ' + self.owner.name + ' cannot be used.')
+			message('The ' + self.owner.name.title() + ' cannot be used.')
 		else:
 			if self.use_function() != 'cancelled':
 				inventory.remove(self.owner) #destroy after use, unless cancelled
@@ -560,7 +620,7 @@ class Item:
 		inventory.remove(self.owner)
 		self.owner.x = player.x
 		self.owner.y = player.y
-		message('You dropped a ' + self.owner.name + '.', libtcod.yellow)
+		message('You dropped a ' + self.owner.name.title() + '.', libtcod.yellow)
 
 class Equipment:
 	#an object that can be equipped, yielding bonuses/special abilities
@@ -584,10 +644,10 @@ class Equipment:
 		
 		#equip object and alert the player
 		self.is_equipped = True
-		message('Equipped ' + self.owner.name + ' on ' + self.slot + '.', libtcod.light_green)
+		message('Equipped ' + self.owner.name.title() + ' on ' + self.slot + '.', libtcod.light_green)
 	def dequip(self):
 		self.is_equipped = False
-		message('Dequipped ' + self.owner.name + ' from ' + self.slot + '.', libtcod.light_yellow)
+		message('Dequipped ' + self.owner.name.title() + ' from ' + self.slot + '.', libtcod.light_yellow)
 		
 class Arrows:
 	#arrow items that can be picked up and added to player's Quiver for later firing
@@ -615,7 +675,7 @@ class Wand:
 			zap = self.zap_function()
 			if zap != 'didnt-take-turn' and zap != 'cancelled':
 				self.charges -= 1
-				message('Charges remaining on ' + self.owner.name + ': ' + str(self.charges), libtcod.light_blue)
+				message('Charges remaining on ' + self.owner.name.title() + ': ' + str(self.charges), libtcod.light_blue)
 				player.fighter.turn_count += 1
 				pass
 				initialize_fov()
@@ -638,7 +698,7 @@ def cast_magic_missile():
 	else:
 		#magic missile
 		missile_damage = libtcod.random_get_int(0, 4, 8) #+ player.fighter.sorcery - monster.fighter.magic_res
-		message('A spear of brilliant blue light strikes ' + monster.name + ' for ' + str(missile_damage) + ' damage!', libtcod.light_blue)
+		message('A spear of brilliant blue light strikes ' + monster.name.title() + ' for ' + str(missile_damage) + ' damage!', libtcod.light_blue)
 		monster.fighter.take_damage(missile_damage)
 	
 
@@ -972,11 +1032,18 @@ def place_objects(room):
 		#only place if tile is not blocked
 		if not is_blocked(x, y):
 			choice = random_choice(monster_chances)
+			mutation_roll = libtcod.random_get_int(0, 1, 6) + dungeon_level
+			if mutation_roll > 6:
+				mutation_num = mutation_roll - 6
+				if mutation_num > 2:
+					mutation_num = 2
 			if choice == 'orc':
 				#create an orc
 				fighter_component = Fighter(x, y, hp=10, defense=0, power=4, ranged=0, quiver=0, xp=35, death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks=True, fighter=fighter_component, ai=ai_component)
+				if mutation_roll > 6:
+					monster.monster_mutator(mutation_num)
 			elif choice == 'orc archer':
 				#create an orc archer
 				fighter_component = Fighter(x, y, hp=8, defense=0, power=1, ranged=4, quiver=15, xp=50, death_function=archer_death)
@@ -986,12 +1053,16 @@ def place_objects(room):
 				#create an orc captain
 				fighter_component = Fighter(x, y, hp=20, defense=2, power=6, ranged=0, quiver=0, xp=75, death_function=monster_death)
 				ai_component = BasicMonster()
-				monster = Object(x, y, 'o', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
+				monster = Object(x, y, 'O', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
+				if mutation_roll > 6:
+					monster.monster_mutator(mutation_num)
 			elif choice == 'troll':
 				#create a troll
 				fighter_component = Fighter(x, y, hp=30, defense=2, power=8, ranged=0, quiver=0, xp=100, death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'T', 'troll', libtcod.darker_green, blocks=True, fighter=fighter_component, ai=ai_component)
+				if mutation_roll > 6:
+					monster.monster_mutator(mutation_num)
 			elif choice == 'wolf':
 				#create a wolf
 				fighter_component = Fighter(x, y, hp=8, defense=0, power=2, ranged=0, quiver=0, xp=10, death_function=monster_death)
@@ -1009,10 +1080,14 @@ def place_objects(room):
 				fighter_component = Fighter(x, y, hp=16, defense=3, power=5, ranged=5, xp=40, quiver=0, death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+				if mutation_roll > 6:
+					monster.monster_mutator(mutation_num)
 			elif choice == 'naga':
 				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, blocks=True, death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+				if mutation_roll > 6:
+					monster.monster_mutator(mutation_num)
 					
 			objects.append(monster)
 
@@ -1051,6 +1126,10 @@ def place_objects(room):
 				#create a warp scroll
 				item_component = Item (use_function=cast_warp)
 				item = Object(x, y, '#', 'scroll of teleportation', libtcod.light_yellow, item=item_component)
+			elif choice == 'petrify':
+				#create a petrify scroll
+				item_component = Item(use_function=cast_petrify)
+				item = Object(x, y, '#', 'scroll of petrification', libtcod.light_yellow, item=item_component)
 			elif choice == 'antidote':
 				#create an antidote:
 				item_component = Item(use_function=cast_antidote)
@@ -1473,7 +1552,7 @@ def get_names_under_mouse():
 	names = [obj.name for obj in objects
 				if obj.x == x and obj.y == y and libtcod.map_is_in_fov(fov_map, obj.x, obj.y)]
 	names = ', '.join(names) #join the names, comma-separated
-	return names.capitalize()
+	return names.title()
 
 def check_level_up():
 	#check if the player's experience is enough to level up
@@ -1513,7 +1592,7 @@ def player_death(player):
 
 def monster_death(monster):
 	#transform monster into a corpse! no more moves or attacks, can't be attacked
-	message(monster.name.capitalize() + ' is dead! You gained ' + str(monster.fighter.xp) + ' experience points.', libtcod.orange)
+	message(monster.name.title() + ' is dead! You gained ' + str(monster.fighter.xp) + ' experience points.', libtcod.orange)
 	monster.char = '%'
 	monster.color = libtcod.dark_red
 	monster.blocks = False
@@ -1655,7 +1734,7 @@ def cast_recharge():
 	wand_list[index].wand.charges += 5
 	if wand_list[index].wand.charges > wand_list[index].wand.max_charges:
 		wand_list[index].wand.charges = wand_list[index].wand.max_charges
-	message(wand_list[index].name.capitalize() + ' recharged.  Current charges: ' + str(wand_list[index].wand.charges), libtcod.light_blue)
+	message(wand_list[index].name.title() + ' recharged.  Current charges: ' + str(wand_list[index].wand.charges), libtcod.light_blue)
 	
 	
 	
@@ -1675,7 +1754,7 @@ def cast_lightning():
 		return 'cancelled'
 
 	#bolt of lightning
-	message('A lightning bolt strikes the ' + monster.name + ' for ' + str(LIGHTNING_DAMAGE) + ' damage!', libtcod.light_blue)
+	message('A lightning bolt strikes the ' + monster.name.title() + ' for ' + str(LIGHTNING_DAMAGE) + ' damage!', libtcod.light_blue)
 	monster.fighter.take_damage(LIGHTNING_DAMAGE)
 
 def cast_confuse():
@@ -1687,7 +1766,7 @@ def cast_confuse():
 	old_ai = monster.ai
 	monster.ai = ConfusedMonster(old_ai)
 	monster.ai.owner = monster
-	message('The eyes of the ' + monster.name + ' look vacant as it starts to stumble around!', libtcod.light_green)
+	message('The eyes of the ' + monster.name.title() + ' look vacant as it starts to stumble around!', libtcod.light_green)
 	
 def cast_death():
 	#ask player for a target to confuse
@@ -1695,7 +1774,7 @@ def cast_death():
 	monster = target_monster()
 	if monster is None: return 'cancelled'
 	#kill monster (later: if magic res doesn't save it)
-	message(monster.name.capitalize() + ' dies instantly, its soul banished from existence.', libtcod.grey)
+	message(monster.name.title() + ' dies instantly, its soul banished from existence.', libtcod.grey)
 	death_strike = monster.fighter.hp
 	monster.fighter.take_damage(death_strike)
 	
@@ -1705,16 +1784,16 @@ def cast_petrify():
 	message('Left click on an enemy to cast petrify, or right click/ESC to cancel.', libtcod.light_cyan)
 	monster = target_monster()
 	if monster is None: return 'cancelled'
-	message(monster.name.capitalize() + ' gets turned into solid stone.', libtcod.sepia)
+	message(monster.name.title() + ' gets turned into solid stone.', libtcod.sepia)
 	#transform monster into a statue! no more moves or attacks, can't be attacked
-	message(monster.name.capitalize() + ' is petrified! You gained ' + str(int(monster.fighter.xp / 2)) + ' experience points.', libtcod.orange)
+	message(monster.name.title() + ' is petrified! You gained ' + str(int(monster.fighter.xp / 2)) + ' experience points.', libtcod.orange)
 	player.fighter.xp += int(monster.fighter.xp / 2)
 	monster.color = libtcod.sepia
 	fighter_component = Fighter(monster.x, monster.y, hp=25, defense=0, power=0, ranged=0, quiver=0, xp=0, death_function=statue_crumble)
 	monster.fighter = fighter_component
 	monster.fighter.owner = monster
 	monster.ai = None
-	monster.name = 'Statue of ' + monster.name.capitalize()
+	monster.name = 'Statue of ' + monster.name.title()
 	
 def statue_crumble(self):
 	#let a petrified enemy crumble into rocks
@@ -1740,7 +1819,7 @@ def cast_warp():
 			warpy = libtcod.random_get_int(0, 1, MAP_HEIGHT)
 		monster.x = warpx
 		monster.y = warpy
-		message(monster.name.capitalize() + ' suddenly teleports away in a vortex of swirling purple light.', libtcod.light_blue)
+		message(monster.name.title() + ' suddenly teleports away in a vortex of swirling purple light.', libtcod.light_blue)
 		#message('New location of creature: ' + str(monster.x) + ', ' + str(monster.y), libtcod.light_blue)
 	
 
@@ -1753,7 +1832,7 @@ def cast_fireball():
 	message('The fireball explodes, burning everything within ' + str(FIREBALL_RADIUS) + ' tiles!', libtcod.orange)
 	for obj in objects: #damage every fighter in range, including the player
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.fighter:
-			message('The ' + obj.name + ' gets burned for ' + str(FIREBALL_DAMAGE) + ' damage.', libtcod.orange)
+			message('The ' + obj.name.title() + ' gets burned for ' + str(FIREBALL_DAMAGE) + ' damage.', libtcod.orange)
 			obj.fighter.take_damage(FIREBALL_DAMAGE)
 			
 def fire_arrow():
