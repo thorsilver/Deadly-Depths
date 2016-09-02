@@ -926,9 +926,12 @@ def place_objects(room):
 	monster_chances = {}
 	monster_chances['orc'] = 60 #orc always shows up
 	monster_chances['orc archer'] = 35 #orc archers always show up, for now
+	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
 	monster_chances['wolf'] = 60 #wolf always shows up
 	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
 	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
+	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
 
 	#max items per room
 	max_items = from_dungeon_level([[1, 1], [2, 4]])
@@ -979,6 +982,11 @@ def place_objects(room):
 				fighter_component = Fighter(x, y, hp=8, defense=0, power=1, ranged=4, quiver=15, xp=50, death_function=archer_death)
 				ai_component = ArcherAI()
 				monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+			elif choice == 'orc captain':
+				#create an orc captain
+				fighter_component = Fighter(x, y, hp=20, defense=2, power=6, ranged=0, quiver=0, xp=75, death_function=monster_death)
+				ai_component = BasicMonster()
+				monster = Object(x, y, 'o', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
 			elif choice == 'troll':
 				#create a troll
 				fighter_component = Fighter(x, y, hp=30, defense=2, power=8, ranged=0, quiver=0, xp=100, death_function=monster_death)
@@ -996,7 +1004,15 @@ def place_objects(room):
 			elif choice == 'rattlesnake':
 				fighter_component = Fighter(x, y, hp=8, defense=1, power=3, ranged=3, xp=15, quiver=0, death_function=monster_death)
 				ai_component = PoisonSpitterAI()
-				monster=Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
+				monster = Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
+			elif choice == 'naga hatchling':
+				fighter_component = Fighter(x, y, hp=16, defense=3, power=5, ranged=5, xp=40, quiver=0, death_function=monster_death)
+				ai_component = PoisonSpitterAI()
+				monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+			elif choice == 'naga':
+				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, blocks=True, death_function=monster_death)
+				ai_component = PoisonSpitterAI()
+				monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 					
 			objects.append(monster)
 
@@ -1050,59 +1066,59 @@ def place_objects(room):
 			elif choice == 'w_mmissile':
 				#WAND TEST: wand of magic missile
 				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
-				obj = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
 			elif choice == 'w_lightning':
 				#WAND TEST 2: wand of lightning
 				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
-				obj = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
 			elif choice == 'w_confusion':
 				#WAND TEST 3: wand of confusion
 				wand_component = Wand(charges=7, max_charges=15, zap_function=cast_confuse)
-				obj = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
 			elif choice == 'w_fireball':
 				#WAND TEST 7: wand of fireball
 				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_fireball)
-				obj = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
 			elif choice == 'w_death':
 				#WAND TEST 9: wand of death
 				wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
-				obj = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
 			elif choice == 'w_warp':
 				#WAND TEST 10: wand of teleportation
 				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
-				obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 			elif choice == 'w_petrify':
 				#WAND TEST 11: wand of petrification
 				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_petrify)
-				obj = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
 			elif choice == 'w2_mmissile':
 				#WAND TEST4: fine wand of magic missile
 				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
-				obj = Object(0, 0, '/', 'wand of magic missile', libtcod.light_orange, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of magic missile', libtcod.light_orange, wand=wand_component)
 			elif choice == 'w2_lightning':
 				#WAND TEST 5: fine wand of lightning
 				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_lightning)
-				obj = Object(0, 0, '/', 'wand of lightning', libtcod.light_yellow, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of lightning', libtcod.light_yellow, wand=wand_component)
 			elif choice == 'w2_confusion':
 				#WAND TEST 6: fine wand of confusion
 				wand_component = Wand(charges=15, max_charges=15, zap_function=cast_confuse)
-				obj = Object(0, 0, '/', 'wand of confusion', libtcod.light_sky, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of confusion', libtcod.light_sky, wand=wand_component)
 			elif choice == 'w2_fireball':
 				#WAND TEST 8: fine wand of fireball
 				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_fireball)
-				obj = Object(0, 0, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
 			elif choice == 'w2_death':
 				#WAND TEST 9: ornate wand of death
 				wand_component = Wand(charges=7, max_charges=10, zap_function=cast_death)
-				obj = Object(0, 0, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
+				item = Object(0, 0, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
 			elif choice == 'w2_warp':
 				#WAND TEST 10: fine wand of teleportation
 				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_warp)
-				obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 			elif choice == 'w2_petrify':
 				#WAND TEST 12: wand of petrification
 				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_petrify)
-				obj = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
+				item = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
 				
 			
 			objects.append(item)
