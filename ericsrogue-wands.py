@@ -30,6 +30,9 @@ stairsdown_tile = 265
 dagger_tile = 266
 corpse_tile = 267
 
+#special chars for certain objects
+web_char = chr(176)
+
 #dungeon generation parameters
 ROOM_MAX_SIZE = 10
 ROOM_MIN_SIZE = 6
@@ -285,7 +288,7 @@ class Object:
 		elif (not self.always_visible and map[self.x][self.y].explored):
 			libtcod.console_set_default_foreground(con, libtcod.grey)
 			#libtcod.console_set_char_background(con, self.x, self.y, color_dark_ground, libtcod.BKGND_NONE)
-			libtcod.console_put_char_ex(con, self.x, self.y, '.', libtcod.grey, libtcod.black)
+			libtcod.console_put_char_ex(con, self.x, self.y, '.', libtcod.darker_grey, libtcod.black)
 		else:
 			libtcod.console_set_default_foreground(con, libtcod.black)
 			
@@ -1072,6 +1075,7 @@ def place_objects(room):
 					fighter_component = Fighter(x, y, hp=10, defense=0, power=2, ranged=0, quiver=0, xp=10, death_function=monster_death)
 					ai_component = WolfAI()
 					monster = Object(x+1, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
+			
 			elif choice == 'rattlesnake':
 				fighter_component = Fighter(x, y, hp=8, defense=1, power=3, ranged=3, xp=15, quiver=0, death_function=monster_death)
 				ai_component = PoisonSpitterAI()
@@ -1083,7 +1087,7 @@ def place_objects(room):
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'naga':
-				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, blocks=True, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
@@ -1238,6 +1242,53 @@ def render_all():
 	global color_dark_wall, color_light_wall
 	global color_dark_ground, color_light_ground
 	global fov_recompute
+	
+	#set names and colour schemes according to dungeon level
+	if dungeon_level <= 2:
+		dungeon_level_name = 'Dread Fortress'
+		dark_wall = libtcod.darker_grey
+		light_wall = libtcod.light_grey
+	elif 3 <= dungeon_level < 5:
+		dungeon_level_name = 'Deep Catacombs'
+		dark_wall = libtcod.darker_sepia 
+		light_wall = libtcod.sepia
+	elif 5 <= dungeon_level < 7:
+		dungeon_level_name = 'Slimy Caverns'
+		dark_wall = libtcod.desaturated_blue
+		light_wall = libtcod.light_blue
+	elif 7 <= dungeon_level < 9:
+		dungeon_level_name = 'Sickly Depths'
+		dark_wall = libtcod.desaturated_han
+		light_wall = libtcod.light_han
+	elif 9 <= dungeon_level < 11:
+		dungeon_level_name = 'Putrid Palace' 
+		dark_wall = libtcod.desaturated_yellow
+		light_wall = libtcod.yellow
+	elif 11 <= dungeon_level < 13:
+		dungeon_level_name = 'Fiery Hellscape'
+		dark_wall = libtcod.darker_flame
+		light_wall = libtcod.flame
+	elif 13 <= dungeon_level < 15:
+		dungeon_level_name = 'Twisted Abyss'
+		idx_al = [0, 4, 8]
+		col_al = [libtcod.red, libtcod.orange, libtcod.crimson]
+		abyss_map_light = libtcod.color_gen_map(col_al, idx_al)
+	
+		idx_ad = [0, 4, 8]
+		col_ad = [libtcod.desaturated_red, libtcod.desaturated_orange, libtcod.desaturated_crimson]
+		abyss_map_dark = libtcod.color_gen_map(col_ad, idx_ad)
+	elif dungeon_level == 15:
+		dungeon_level_name = 'Swirling Chaos'
+		idx_cl = [0, 4, 8]
+		col_cl = [libtcod.han, libtcod.violet, libtcod.purple]
+		chaos_map_light = libtcod.color_gen_map(col_cl, idx_cl)
+	
+		idx_cd = [0, 4, 8]
+		col_cd = [libtcod.desaturated_han, libtcod.desaturated_violet, libtcod.desaturated_purple]
+		chaos_map_dark = libtcod.color_gen_map(col_cd, idx_cd)
+
+		
+	
 
 	if fov_recompute:
 		#recompute FOV if needed
@@ -1253,19 +1304,30 @@ def render_all():
 					#if it's not visible, players can only see already-explored tiles
 					if map[x][y].explored:
 						if wall:
-							libtcod.console_put_char_ex(con, x, y, '#', libtcod.grey, libtcod.black)
+							if 13 <= dungeon_level < 15:
+								dark_wall = abyss_map_dark[libtcod.random_get_int(0, 0, 8)]
+							if dungeon_level == 15:
+								dark_wall = chaos_map_dark[libtcod.random_get_int(0, 0, 8)]
+							libtcod.console_put_char_ex(con, x, y, '#', libtcod.black, libtcod.BKGND_SET)
+							#libtcod.console_put_char_ex(con, x, y, '#', libtcod.darker_han, libtcod.black)
 							#libtcod.console_put_char_ex(con, x, y, '#', libtcod.flame, libtcod.black)
-							#libtcod.console_set_char_background(con, x, y, color_dark_wall, libtcod.BKGND_SET)
+							#libtcod.console_set_char_background(con, x, y, libtcod.color_dark_wall, libtcod.BKGND_SET)
+							libtcod.console_set_char_background(con, x, y, dark_wall, libtcod.BKGND_SET)
 						else:
-							libtcod.console_put_char_ex(con, x, y, '.', libtcod.grey, libtcod.black)
+							libtcod.console_put_char_ex(con, x, y, '.', libtcod.darker_grey, libtcod.black)
 							#libtcod.console_put_char_ex(con, x, y, ' ', libtcod.black, libtcod.black)
 							#libtcod.console_put_char_ex(con, x, y, '.', libtcod.flame, libtcod.black)
 							#libtcod.console_set_char_background(con, x, y, color_dark_ground, libtcod.BKGND_SET)
 				else:
 					if wall:
+						if 13 <= dungeon_level < 15:
+							light_wall = abyss_map_light[libtcod.random_get_int(0, 0, 8)]
+						if dungeon_level == 15:
+							light_wall = chaos_map_light[libtcod.random_get_int(0, 0, 8)]
 						#libtcod.console_set_char_background(con, x, y, color_light_wall, libtcod.BKGND_SET)
-						libtcod.console_put_char_ex(con, x, y, '#', libtcod.lighter_grey, libtcod.black)
+						libtcod.console_put_char_ex(con, x, y, '#', libtcod.black, libtcod.BKGND_SET)
 						#libtcod.console_put_char_ex(con, x, y, '#', libtcod.light_flame, libtcod.black)
+						libtcod.console_set_char_background(con, x, y, light_wall, libtcod.BKGND_SET)
 					else:
 						#libtcod.console_set_char_background(con, x, y, color_light_ground, libtcod.BKGND_SET)
 						#libtcod.console_put_char_ex(con, x, y, '.', libtcod.light_flame, libtcod.black)
@@ -1327,7 +1389,7 @@ def render_all():
 	render_bar(1, 2, BAR_WIDTH, 'XP', player.fighter.xp, level_up_xp,
 		libtcod.blue, libtcod.darker_blue)
 	libtcod.console_print_ex(panel, 1, 3, libtcod.BKGND_NONE, libtcod.LEFT, 'Level ' + str(player.level) + ' ' + player.fighter.role)
-	libtcod.console_print_ex(panel, 1, 4, libtcod.BKGND_NONE, libtcod.LEFT, 'Dungeon Level: ' + str(dungeon_level))
+	libtcod.console_print_ex(panel, 1, 4, libtcod.BKGND_NONE, libtcod.LEFT, dungeon_level_name + ' (' + str(dungeon_level) + ')')
 	libtcod.console_print_ex(panel, 1, 5, libtcod.BKGND_NONE, libtcod.LEFT, 'Turns: ' + str(player.fighter.turn_count))
 	if player.fighter.poisoned == True:
 		libtcod.console_print_ex(panel, 1, 6, libtcod.BKGND_NONE, libtcod.LEFT, '!!POISONED!!')
@@ -2187,8 +2249,8 @@ def main_menu():
 #############################################
 
 #run command for Notepad++ "C:\Python27\debugpy.bat" "$(CURRENT_DIRECTORY)" $(FILE_NAME)
- 
-libtcod.console_set_custom_font('terminal8x8_aa_tc.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD)
+libtcod.console_set_custom_font('terminal16x16_gs_ro.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_ASCII_INROW, 16, 16) 
+#libtcod.console_set_custom_font('terminal8x8_aa_tc.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD)
 #libtcod.console_set_custom_font('tiledFont6.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD, 32, 24) #TILES VERSION
 libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'Eric\'s Maze of Deathery', False)
 libtcod.sys_set_fps(LIMIT_FPS)
