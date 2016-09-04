@@ -1980,7 +1980,7 @@ def new_game(choice):
 		player.level = 1
 		
 	#generate map (not drawn yet)
-	dungeon_level = 13
+	dungeon_level = 1
 	make_bsp()
 	#make_map()
 	initialize_fov()
