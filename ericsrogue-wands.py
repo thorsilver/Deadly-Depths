@@ -333,7 +333,7 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, turn_count=0, poison_tick=0, resistances=[], 
+	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, turn_count=0, poison_tick=0, resistances=[], 
 		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
@@ -344,6 +344,8 @@ class Fighter:
 		self.base_ranged = ranged
 		self.quiver = quiver
 		self.xp = xp
+		self.damage_type = damage_type
+		self.damage_dice = damage_dice
 		self.turn_count = turn_count
 		self.poison_tick = poison_tick
 		self.resistances = resistances
@@ -401,24 +403,30 @@ class Fighter:
 		dy = other.y - self.y
 		return math.sqrt(dx ** 2 + dy ** 2)
 	
-	def attack(self, target):
+	def attack(self, target, damage_type, damage_dice):
 		#a simple formula for physical attack damage
-		damage = libtcod.random_get_int(0, 2, self.power) - target.fighter.defense
-		if damage <= 0:
-			damage = 1
+		# damage = libtcod.random_get_int(0, 2, self.power) - target.fighter.defense
+		# if damage <= 0:
+			# damage = 1
+		#make a damage roll
+		damage = damageRoll(damage_dice)
 		
 		if self.AttackRoll(target.fighter) == 'hit':
-			#make target take damage
-			result = target.fighter.take_damage(damage, 'phys')
+			#make target take damage if possible
+			result = target.fighter.take_damage(damage, damage_type)
+			#report half damage for resistant targets
 			if result < damage or result == 1:
 				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + 
 					' damage, but ' + target.name.title() + ' seems relatively unfazed.', libtcod.yellow)
+			#report no damage for immune targets
 			elif result == 'immune':
 				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but ' + target.name.title() + ' shrugs it off completely!', libtcod.red)
+			#report double damage for weak targets
 			elif result > damage:
 				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + ' damage, and ' + 
 					target.name.title() + ' screams in pain!', libtcod.orange)
 			else:
+				#report normal damage otherwise
 				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + ' damage.', libtcod.white)
 			#check for death
 			if target.fighter.hp <= 0:
@@ -431,15 +439,13 @@ class Fighter:
 		elif self.AttackRoll(target.fighter) == 'miss':
 			message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but misses.', libtcod.white)
 			
-	def ranged_attack(self, target):
+	def ranged_attack(self, target, damage_type, damage_dice):
 		#simple formula for ranged damage -- to change later
-		damage = libtcod.random_get_int(0, 2, self.ranged) - target.fighter.defense
-		if damage <= 0:
-			damage = 1
 		if self.quiver > 0: 
 			if self.ranged_attack_roll(target.fighter) == 'hit':
 				#make target take damage
-				result = target.fighter.take_damage(damage, 'pierce')
+				damage = damageRoll(damage_dice)
+				result = target.fighter.take_damage(damage, damage_type)
 				if result < damage or result == 1:
 					message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' for ' + str(result) + 
 					' damage, but ' + target.name.title() + ' seems relatively unfazed.', libtcod.yellow)
@@ -522,12 +528,16 @@ class BasicMonster:
 
 			#attack if close enough, if player is still alive
 			elif player.fighter.hp > 0:
-				monster.fighter.attack(player)
+				type = monster.fighter.damage_type
+				dice = monster.fighter.damage_dice
+				monster.fighter.attack(player, type, dice)
 
 class WolfAI:
 	#AI for a wolf - they can attack from outside FOV, and howl for extra power when injured!
 	def take_turn(self):
 		monster = self.owner
+		type = monster.fighter.damage_type
+		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 20:
 			if monster.distance_to(player) >= 2:
 				monster.move_astar(player)
@@ -536,19 +546,21 @@ class WolfAI:
 				monster.fighter.enraged = True
 				monster.fighter.power += 2
 				monster.color = libtcod.red
-				monster.fighter.attack(player)
+				monster.fighter.attack(player, type, dice)
 				packmate = closest_packmate(monster, 20)
 				if packmate is not None:
 					packmate.ai = AngryWolf
 					packmate.ai.owner = packmate
 					message('You hear an answering howl in the distance!', libtcod.red)
 			else:
-				monster.fighter.attack(player)
+				monster.fighter.attack(player, type, dice)
 				
 class PoisonSpitterAI:
 	#AI for poisonspitters -- they get to range and chuck poison goo, chance to hit based on Agility
 	def take_turn(self):
 		monster = self.owner
+		type = monster.fighter.damage_type
+		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 15 and monster.distance_to(player) > 5:
 			monster.move_astar(player)
 			if libtcod.random_get_int(0, 1, 6) < 2:
@@ -565,18 +577,20 @@ class PoisonSpitterAI:
 		elif monster.distance_to(player) <= 5 and player.fighter.poisoned == True and monster.distance_to(player) >= 2:
 			monster.move_astar(player)
 		elif monster.distance_to(player) <= 1:
-			monster.fighter.attack(player)
+			monster.fighter.attack(player, type, dice)
 			
 class ArcherAI:
 	#AI for archers - they get to range and fire arrows
 	def take_turn(self):
 		monster = self.owner
+		type = monster.fighter.damage_type
+		dice = monster.fighter.damage_dice
 		range = monster.distance_to(player)
 		if 7 < range <=15:
 			monster.move_astar(player)
 		elif 2 <= range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
 			if libtcod.random_get_int(0, 1, 4) > 1:
-				monster.fighter.ranged_attack(player)
+				monster.fighter.ranged_attack(player, type, dice)
 				if monster.fighter.quiver == 0:
 					message('The ' + monster.name.title() + ' ran out of arrows!', libtcod.green)
 			else:
@@ -586,12 +600,14 @@ class ArcherAI:
 		elif 2 <= range <= 7 and monster.fighter.quiver <= 0:
 			monster.move_astar(player)
 		elif range < 2:
-			monster.fighter.attack(player)
+			monster.fighter.attack(player, type, dice)
 			
 class AngryWolf:
 	#AI for wolf awoken by a packmate's howl -- they'll charge in from up to 25 tiles away!
 	def take_turn(self):
 		monster = self.owner
+		type = monster.fighter.damage_type
+		dice = monster.fighter.damage_dice
 		monster.fighter.enraged = True
 		monster.fighter.power += 2
 		monster.color = libtcod.red
@@ -599,7 +615,7 @@ class AngryWolf:
 		if range <=20 and range >= 2:
 			move_astar_player
 		if range < 2:
-			monster.fighter.attack(player)
+			monster.fighter.attack(player, type, dice)
 			
 	
 
@@ -687,8 +703,10 @@ class Item:
 
 class Equipment:
 	#an object that can be equipped, yielding bonuses/special abilities
-	def __init__(self, slot, power_bonus=0, ranged_bonus=0, defense_bonus=0, max_hp_bonus=0):
+	def __init__(self, slot, damage_type, damage_dice, power_bonus=0, ranged_bonus=0, defense_bonus=0, max_hp_bonus=0):
 		self.slot = slot
+		self.damage_type = damage_type
+		self.damage_dice = damage_dice
 		self.power_bonus = power_bonus
 		self.ranged_bonus = ranged_bonus
 		self.defense_bonus = defense_bonus
@@ -780,7 +798,35 @@ def get_all_equipped(obj): #gets a list of equipped items
 		return equipped_list
 	else:
 		return [] #other objects have no slots (at the moment)
-
+		
+def get_weapon_damage(): #retrieve weapon damage from equipped weapon
+	weapon = get_equipped_in_slot('right hand')
+	if weapon.is_equipped:
+			return weapon.damage_dice
+	else:
+		return '1d4' #default unarmed damage
+	
+def get_damage_type(): #retrieve weapon damage type from equipped weapon
+	weapon = get_equipped_in_slot('right hand')
+	if weapon.is_equipped:
+		return weapon.damage_type
+	else:
+		return 'phys'
+		
+def get_bow_damage(): #retrieve damage dice value from bow slot
+	bow = get_equipped_in_slot('bow')
+	if bow.is_equipped:
+		return bow.damage_dice
+	else:
+		return None
+		
+def get_bow_type(): #retrieve damage type of equipped missile weapon
+	bow = get_equipped_in_slot('bow')
+	if bow.is_equipped:
+		return bow.damage_dice
+	else:
+		return None
+	
 def is_blocked(x, y):
 	#test the map tile first
 	if map[x][y].blocked:
@@ -1102,52 +1148,52 @@ def place_objects(room):
 					mutation_num = 2
 			if choice == 'orc':
 				#create an orc
-				fighter_component = Fighter(x, y, hp=10, defense=0, power=4, ranged=0, quiver=0, xp=35, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=10, defense=0, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'orc archer':
 				#create an orc archer
-				fighter_component = Fighter(x, y, hp=8, defense=0, power=1, ranged=4, quiver=15, xp=50, death_function=archer_death)
+				fighter_component = Fighter(x, y, hp=8, defense=0, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
 				ai_component = ArcherAI()
 				monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 			elif choice == 'orc captain':
 				#create an orc captain
-				fighter_component = Fighter(x, y, hp=20, defense=2, power=6, ranged=0, quiver=0, xp=75, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=20, defense=2, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'O', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'troll':
 				#create a troll
-				fighter_component = Fighter(x, y, hp=30, defense=2, power=8, ranged=0, quiver=0, xp=100, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=30, defense=2, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'T', 'troll', libtcod.darker_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'wolf':
 				#create a wolf
-				fighter_component = Fighter(x, y, hp=8, defense=0, power=2, ranged=0, quiver=0, xp=10, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=8, defense=0, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 				ai_component = WolfAI()
 				monster = Object(x, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
 				if not is_blocked(x+1,y):
-					fighter_component = Fighter(x, y, hp=10, defense=0, power=2, ranged=0, quiver=0, xp=10, death_function=monster_death)
+					fighter_component = Fighter(x, y, hp=10, defense=0, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 					ai_component = WolfAI()
 					monster = Object(x+1, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
 			
 			elif choice == 'rattlesnake':
-				fighter_component = Fighter(x, y, hp=8, defense=1, power=3, ranged=3, xp=15, quiver=0, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=8, defense=1, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
 			elif choice == 'naga hatchling':
-				fighter_component = Fighter(x, y, hp=16, defense=3, power=5, ranged=5, xp=40, quiver=0, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=16, defense=3, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'naga':
-				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
@@ -1200,7 +1246,7 @@ def place_objects(room):
 				item = Object(x, y, '!', 'antidote', libtcod.purple, item=item_component)
 			elif choice == 'longsword':
 				#create a longsword
-				equipment_component = Equipment(slot='right hand', power_bonus=3)
+				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3)
 				item = Object(x, y, '/', 'longsword', libtcod.sky, equipment=equipment_component)
 			elif choice == 'shield':
 				#create a shield
@@ -1476,8 +1522,10 @@ def player_move_or_attack(dx, dy):
 			break
 
 	#attack if target found, otherwise move
+	type = get_damage_type()
+	damage_dice = get_weapon_damage()
 	if target is not None:
-		player.fighter.attack(target)
+		player.fighter.attack(target, type, damage_dice)
 	else:
 		player.move(dx, dy)
 		fov_recompute = True
@@ -1966,7 +2014,9 @@ def fire_arrow():
 		return 'didnt-take-turn'
 	#monster = target_menu()
 	elif monster:
-		player.fighter.ranged_attack(monster)
+		type = get_bow_type()
+		damage = get_bow_damage()
+		player.fighter.ranged_attack(monster, type, damage)
 		player.fighter.turn_count += 1
 		fov_recompute = True
 		render_all()
@@ -2020,22 +2070,22 @@ def new_game(choice):
 	global player, inventory, game_msgs, game_state, dungeon_level
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, weaknesses=['phys'], death_function=player_death, role='Fighter')
+		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', weaknesses=['phys'], death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 1:
 		#create player object, Knight class
-		fighter_component = Fighter(0, 0, hp=120, defense=4, power=2, ranged=1, quiver=0, xp=0, death_function=player_death, role='Knight')
+		fighter_component = Fighter(0, 0, hp=120, defense=4, power=2, ranged=1, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Knight')
 		player = Object(0, 0, '@', 'player', libtcod.brass, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 2:
 		#create player object, Ranger class
-		fighter_component = Fighter(0, 0, hp=80, defense=1, power=2, ranged=4, quiver=20, xp=0, death_function=player_death, role='Ranger')
+		fighter_component = Fighter(0, 0, hp=80, defense=1, power=2, ranged=4, quiver=20, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Ranger')
 		player = Object(0, 0, '@', 'player', libtcod.gold, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 3:
 		#create player object, Wizard class
-		fighter_component = Fighter(0, 0, hp=60, defense=1, power=2, ranged=3, quiver=0, xp=0, death_function=player_death, role='Wizard')
+		fighter_component = Fighter(0, 0, hp=60, defense=1, power=2, ranged=3, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Wizard')
 		player = Object(0, 0, '@', 'player', libtcod.sky, blocks=True, fighter=fighter_component)
 		player.level = 1
 		
@@ -2058,14 +2108,14 @@ def new_game(choice):
 	if choice == 0:
 		#Fighter equipment
 		#starting equipment: a short sword
-		equipment_component = Equipment(slot='right hand', power_bonus=3, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel short sword', libtcod.sky, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#starting equipment: wooden buckler shield
-		equipment_component = Equipment(slot='left hand', power_bonus=0, defense_bonus=2, ranged_bonus=0)
+		equipment_component = Equipment(slot='left hand', damage_type='', damage_dice='', power_bonus=0, defense_bonus=2, ranged_bonus=0)
 		obj = Object(0, 0, '(', 'wooden buckler shield', libtcod.brass, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
@@ -2073,14 +2123,14 @@ def new_game(choice):
 	elif choice == 1:
 		#Knight equipment
 		#starting equipment: a warhammer
-		equipment_component = Equipment(slot='right hand', power_bonus=3, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel warhammer', libtcod.sky, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#starting equipment: a steel tower shield
-		equipment_component = Equipment(slot='left hand', power_bonus=0, defense_bonus=3, ranged_bonus=0)
+		equipment_component = Equipment(slot='left hand', damage_type='', damage_dice='', power_bonus=0, defense_bonus=3, ranged_bonus=0)
 		obj = Object(0, 0, '{', 'Elvish short bow', libtcod.brass, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
@@ -2088,14 +2138,14 @@ def new_game(choice):
 	elif choice == 2:
 		#Ranger equipment
 		#starting equipment: a dagger
-		equipment_component = Equipment(slot='right hand', power_bonus=2, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d6', power_bonus=2, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel dagger', libtcod.sky, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#starting equipment: a fine Elvish shortbow
-		equipment_component = Equipment(slot='bow', power_bonus=0, ranged_bonus=4)
+		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='1d6', power_bonus=0, ranged_bonus=4)
 		obj = Object(0, 0, '{', 'Elvish short bow', libtcod.brass, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
@@ -2104,7 +2154,7 @@ def new_game(choice):
 	elif choice == 3:
 		#Wizard equipment
 		#starting equipment: a staff
-		equipment_component = Equipment(slot='right hand', power_bonus=2, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d4', power_bonus=2, ranged_bonus=0)
 		obj = Object(0, 0, '|', 'old wooden staff', libtcod.sepia, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
