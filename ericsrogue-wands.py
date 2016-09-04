@@ -84,6 +84,22 @@ color_light_ground = libtcod.Color(200, 180, 50)
  
 LIMIT_FPS = 20  #20 frames-per-second maximum
 
+# class Diceroll:
+	# #defining dice rolls for damage calculations
+	# def __init__(self, sides, number):
+		# self.sides = sides
+		# self.number = number
+	
+def roll(sides, number):
+		return sum(random.randint(1, sides) for times in range(number))
+		
+def damageRoll(dice):
+		number, sides = dice.split('d', 1)
+		number = int(number)
+		sides = int(sides)
+		return roll(sides, number)
+		
+
 class Tile:
 	#a tile of the map and its properties
 	def __init__(self, blocked, block_sight = None):
@@ -317,7 +333,8 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, turn_count=0, poison_tick=0, enraged=False, poisoned=False, death_function=None, role=None):
+	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, turn_count=0, poison_tick=0, resistances=[], 
+		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
 		self.base_max_hp = hp
@@ -329,6 +346,9 @@ class Fighter:
 		self.xp = xp
 		self.turn_count = turn_count
 		self.poison_tick = poison_tick
+		self.resistances = resistances
+		self.immunities = immunities
+		self.weaknesses = weaknesses
 		self.enraged = enraged
 		self.poisoned = poisoned
 		self.death_function = death_function
@@ -354,19 +374,26 @@ class Fighter:
 		bonus = sum(equipment.ranged_bonus for equipment in get_all_equipped(self.owner))
 		return self.base_ranged + bonus
 
-	def take_damage(self, damage):
+	def take_damage(self, damage, type):
 		#apply damage if possible
-		if damage > 0:
+		
+		if damage > 0 and type not in self.resistances and type not in self.immunities and type not in self.weaknesses:
 			self.hp -= damage
-			
-			#check for death
-			if self.hp <= 0:
-				function = self.death_function
-				if function is not None:
-					function(self.owner)
-
-				if self.owner != player:  #give experience
-					player.fighter.xp += self.xp
+			return damage
+		#apply damage to resistant monsters
+		elif damage > 0 and type in self.resistances and type not in self.immunities:
+			reduced_damage = int(damage / 2) + 1
+			self.hp -= reduced_damage
+			return reduced_damage
+		#apply double damage to weak monsters
+		elif damage > 0 and type in self.weaknesses:
+			enhanced_damage = damage * 2
+			self.hp -= enhanced_damage
+			return enhanced_damage
+		#reject damage to immune monsters
+		elif damage > 0 and type in self.immunities:
+			return 'immune'
+		
 					
 	def distance_to(self, other):
 		#return the distance to another object
@@ -375,15 +402,32 @@ class Fighter:
 		return math.sqrt(dx ** 2 + dy ** 2)
 	
 	def attack(self, target):
-		#a simple formula for attack damage
+		#a simple formula for physical attack damage
 		damage = libtcod.random_get_int(0, 2, self.power) - target.fighter.defense
 		if damage <= 0:
 			damage = 1
 		
 		if self.AttackRoll(target.fighter) == 'hit':
 			#make target take damage
-			message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(damage) + ' damage.', libtcod.white)
-			target.fighter.take_damage(damage)
+			result = target.fighter.take_damage(damage, 'phys')
+			if result < damage or result == 1:
+				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + 
+					' damage, but ' + target.name.title() + ' seems relatively unfazed.', libtcod.yellow)
+			elif result == 'immune':
+				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but ' + target.name.title() + ' shrugs it off completely!', libtcod.red)
+			elif result > damage:
+				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + ' damage, and ' + 
+					target.name.title() + ' screams in pain!', libtcod.orange)
+			else:
+				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + ' damage.', libtcod.white)
+			#check for death
+			if target.fighter.hp <= 0:
+				function = target.fighter.death_function
+				if function is not None:
+					function(target)
+				if target != player:  #give experience
+					player.fighter.xp += self.xp
+			
 		elif self.AttackRoll(target.fighter) == 'miss':
 			message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but misses.', libtcod.white)
 			
@@ -395,11 +439,27 @@ class Fighter:
 		if self.quiver > 0: 
 			if self.ranged_attack_roll(target.fighter) == 'hit':
 				#make target take damage
-				message(self.owner.name.title() + ' fires an arrow at ' + target.name + ' for ' + str(damage) + ' damage.', libtcod.green)
-				target.fighter.take_damage(damage)
+				result = target.fighter.take_damage(damage, 'pierce')
+				if result < damage or result == 1:
+					message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' for ' + str(result) + 
+					' damage, but ' + target.name.title() + ' seems relatively unfazed.', libtcod.yellow)
+				elif result == 'immune':
+					message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but ' + target.name.title() + ' shrugs it off completely!', libtcod.red)
+				elif result > damage:
+					message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' for ' + str(result) + ' damage, and ' + 
+					+ target.name.title() + ' screams in pain!', libtcod.orange)
+				else:
+					message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' for ' + str(result) + ' damage.', libtcod.green)
 				self.quiver -= 1
+				#check for death
+				if target.fighter.hp <= 0:
+					function = target.fighter.death_function
+					if function is not None:
+						function(target)
+					if target != player:  #give experience
+						player.fighter.xp += self.xp
 			elif self.ranged_attack_roll(target.fighter) == 'miss':
-				message(self.owner.name.title() + ' fires an arrow at ' + target.name + ' but it misses!', libtcod.green)
+				message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' but it misses!', libtcod.green)
 				self.quiver -= 1
 			#message('Orc quiver status: ' + str(self.quiver) + ' arrows!', libtcod.white)
 		elif self.quiver <= 0:
@@ -512,10 +572,10 @@ class ArcherAI:
 	def take_turn(self):
 		monster = self.owner
 		range = monster.distance_to(player)
-		if range <=15 and range > 7:
+		if 7 < range <=15:
 			monster.move_astar(player)
-		elif 3 <= range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
-			if libtcod.random_get_int(0, 1, 4) >= 2:
+		elif 2 <= range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
+			if libtcod.random_get_int(0, 1, 4) > 1:
 				monster.fighter.ranged_attack(player)
 				if monster.fighter.quiver == 0:
 					message('The ' + monster.name.title() + ' ran out of arrows!', libtcod.green)
@@ -523,9 +583,9 @@ class ArcherAI:
 				monster.move_astar(player)
 		elif range <= 7 and not libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			monster.move_astar(player)
-		elif monster.fighter.quiver <= 0 and range >= 2:
+		elif 2 <= range <= 7 and monster.fighter.quiver <= 0:
 			monster.move_astar(player)
-		elif monster.fighter.quiver <= 0 and range <= 1:
+		elif range < 2:
 			monster.fighter.attack(player)
 			
 class AngryWolf:
@@ -702,7 +762,7 @@ def cast_magic_missile():
 		#magic missile
 		missile_damage = libtcod.random_get_int(0, 4, 8) #+ player.fighter.sorcery - monster.fighter.magic_res
 		message('A spear of brilliant blue light strikes ' + monster.name.title() + ' for ' + str(missile_damage) + ' damage!', libtcod.light_blue)
-		monster.fighter.take_damage(missile_damage)
+		monster.fighter.take_damage(missile_damage, 'magic')
 	
 
 def get_equipped_in_slot(slot): #returns equipment in slot, None if empty
@@ -1426,7 +1486,7 @@ def player_move_or_attack(dx, dy):
 	if player.fighter.poisoned == True:
 		if libtcod.random_get_int(0, 1, 6) < 3:
 			poison_damage = libtcod.random_get_int(0, 1, player.level + 1)
-			player.fighter.take_damage(poison_damage)
+			player.fighter.take_damage(poison_damage, 'poison')
 			message('You took ' + str(poison_damage) + ' damage from poison!', libtcod.purple)
 			
 	#if poisoned for 10 turns, shake it off
@@ -1817,7 +1877,7 @@ def cast_lightning():
 
 	#bolt of lightning
 	message('A lightning bolt strikes the ' + monster.name.title() + ' for ' + str(LIGHTNING_DAMAGE) + ' damage!', libtcod.light_blue)
-	monster.fighter.take_damage(LIGHTNING_DAMAGE)
+	monster.fighter.take_damage(LIGHTNING_DAMAGE, 'thunder')
 
 def cast_confuse():
 	#ask the player for a target to confuse
@@ -1838,7 +1898,7 @@ def cast_death():
 	#kill monster (later: if magic res doesn't save it)
 	message(monster.name.title() + ' dies instantly, its soul banished from existence.', libtcod.grey)
 	death_strike = monster.fighter.hp
-	monster.fighter.take_damage(death_strike)
+	monster.fighter.take_damage(death_strike, 'death')
 	
 def cast_petrify():
 	#global player 
@@ -1895,7 +1955,7 @@ def cast_fireball():
 	for obj in objects: #damage every fighter in range, including the player
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.fighter:
 			message('The ' + obj.name.title() + ' gets burned for ' + str(FIREBALL_DAMAGE) + ' damage.', libtcod.orange)
-			obj.fighter.take_damage(FIREBALL_DAMAGE)
+			obj.fighter.take_damage(FIREBALL_DAMAGE, 'fire')
 			
 def fire_arrow():
 	#ask the player for a target
@@ -1960,7 +2020,7 @@ def new_game(choice):
 	global player, inventory, game_msgs, game_state, dungeon_level
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, death_function=player_death, role='Fighter')
+		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, weaknesses=['phys'], death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 1:
