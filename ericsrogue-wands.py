@@ -278,6 +278,45 @@ class Object:
 			self.move_towards(target.x, target.y)
 		#delete path to free memory
 		libtcod.path_delete(my_path)
+		
+	def move_dijk(self, target):
+		
+		#create an FOV map that has the dimensions of the map
+		fov = libtcod.map_new(MAP_WIDTH, MAP_HEIGHT)
+
+		#scan the current map each turn and set walls as unwalkable
+		for y1 in range(MAP_HEIGHT):
+			for x1 in range(MAP_WIDTH):
+				libtcod.map_set_properties(fov, x1, y1, not map[x1][y1].block_sight, not map[x1][y1].blocked)
+
+		#scan all objects to see if any must be navigated around
+		#check also that the object isn't self or the target
+		#the AI class handles things if self is next to target and won't use A* then
+		for obj in objects:
+			if obj.blocks and obj != self and obj!= target:
+				#set the tile as a wall so it must be navigated around
+				libtcod.map_set_properties(fov, obj.x, obj.y, True, False)
+
+		#allocate an A* path
+		#1.41 is the normal diagonal cost of moving
+		path_dijk = libtcod.dijkstra_new(fov)
+
+		#compute the path between self's coordinates and the target's coordinates
+		libtcod.dijkstra_compute(path_dijk, target.x, target.y)
+
+		#check if the path exists, then walk down it and move the monster
+		if not libtcod.dijkstra_is_empty(path_dijk):
+			path_px, path_py = libtcod.dijkstra_path_walk(path_dijk)
+			self.x = path_px
+			self.y = path_py
+			self.fighter.x = self.x
+			self.fighter.x = self.y
+			
+		#if the path doesn't exist, go try move_astar instead
+		else:
+			#keep the old move function as a backup
+			#if there arent any paths it will still try to advance toward player
+			self.move_astar(target)
 
 	def distance_to(self, other):
 		#return the distance to another object
@@ -524,7 +563,7 @@ class BasicMonster:
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
-				monster.move_astar(player)
+				monster.move_dijk(player)
 
 			#attack if close enough, if player is still alive
 			elif player.fighter.hp > 0:
@@ -540,7 +579,7 @@ class WolfAI:
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 20:
 			if monster.distance_to(player) >= 2:
-				monster.move_astar(player)
+				monster.move_dijk(player)
 			elif monster.fighter.hp <= 5 and monster.distance_to(player) <= 5 and monster.fighter.enraged == False:
 				message('The ' + monster.name.title() + ' howls with rage!', libtcod.red)
 				monster.fighter.enraged = True
@@ -562,7 +601,7 @@ class PoisonSpitterAI:
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 15 and monster.distance_to(player) > 5:
-			monster.move_astar(player)
+			monster.move_dijk(player)
 			if libtcod.random_get_int(0, 1, 6) < 2:
 				message('You hear a hissing sound in the distance....', libtcod.yellow)
 		elif monster.distance_to(player) <= 5 and player.fighter.poisoned == False and libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
@@ -575,7 +614,7 @@ class PoisonSpitterAI:
 					message('You dodged the poison spit!', libtcod.purple)
 				
 		elif monster.distance_to(player) <= 5 and player.fighter.poisoned == True and monster.distance_to(player) >= 2:
-			monster.move_astar(player)
+			monster.move_dijk(player)
 		elif monster.distance_to(player) <= 1:
 			monster.fighter.attack(player, type, dice)
 			
@@ -587,7 +626,7 @@ class ArcherAI:
 		dice = monster.fighter.damage_dice
 		range = monster.distance_to(player)
 		if 7 < range <=15:
-			monster.move_astar(player)
+			monster.move_dijk(player)
 		elif 2 <= range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
 			if libtcod.random_get_int(0, 1, 4) > 1:
 				monster.fighter.ranged_attack(player, type, dice)
@@ -596,9 +635,9 @@ class ArcherAI:
 			else:
 				monster.move_astar(player)
 		elif range <= 7 and not libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
-			monster.move_astar(player)
+			monster.move_dijk(player)
 		elif 2 <= range <= 7 and monster.fighter.quiver <= 0:
-			monster.move_astar(player)
+			monster.move_dijk(player)
 		elif range < 2:
 			monster.fighter.attack(player, type, dice)
 			
@@ -613,7 +652,7 @@ class AngryWolf:
 		monster.color = libtcod.red
 		range = monster.distance_to(player)
 		if range <=20 and range >= 2:
-			move_astar_player
+			move_dijk(player)
 		if range < 2:
 			monster.fighter.attack(player, type, dice)
 			
@@ -703,10 +742,11 @@ class Item:
 
 class Equipment:
 	#an object that can be equipped, yielding bonuses/special abilities
-	def __init__(self, slot, damage_type, damage_dice, power_bonus=0, ranged_bonus=0, defense_bonus=0, max_hp_bonus=0):
+	def __init__(self, slot, damage_type, damage_dice, damage_mod = 0, power_bonus=0, ranged_bonus=0, defense_bonus=0, max_hp_bonus=0):
 		self.slot = slot
 		self.damage_type = damage_type
 		self.damage_dice = damage_dice
+		self.damage_mod = damage_mod
 		self.power_bonus = power_bonus
 		self.ranged_bonus = ranged_bonus
 		self.defense_bonus = defense_bonus
@@ -802,7 +842,7 @@ def get_all_equipped(obj): #gets a list of equipped items
 def get_weapon_damage(): #retrieve weapon damage from equipped weapon
 	weapon = get_equipped_in_slot('right hand')
 	if weapon.is_equipped:
-			return weapon.damage_dice
+		return weapon.damage_dice
 	else:
 		return '1d4' #default unarmed damage
 	
@@ -1113,7 +1153,19 @@ def place_objects(room):
 	item_chances['fireball'] = from_dungeon_level([[25, 6]])
 	item_chances['confuse'] = from_dungeon_level([[10, 2]])
 	item_chances['longsword'] = from_dungeon_level([[5, 4]])
-	item_chances['shield'] = from_dungeon_level([[15, 8]])
+	item_chances['shield'] = from_dungeon_level([[15, 6]])
+	item_chances['lance'] = from_dungeon_level([[15, 6]])
+	item_chances['battleaxe'] = from_dungeon_level([[15, 6]])
+	item_chances['morningstar'] = from_dungeon_level([[15, 6]])
+	item_chances['Elvish longbow'] = from_dungeon_level([[15, 6]])
+	item_chances['rapier'] = from_dungeon_level([[15, 6]])
+	item_chances['h_rapier'] = from_dungeon_level([[15, 11]])
+	item_chances['h_lance'] = from_dungeon_level([[15, 11]])
+	item_chances['h_battleaxe'] = from_dungeon_level([[15, 11]])
+	item_chances['h_morningstar'] = from_dungeon_level([[15, 11]])
+	item_chances['h_shortbow'] = from_dungeon_level([[15, 11]])
+	item_chances['h_warhammer'] = from_dungeon_level([[15, 11]])
+	item_chances['h_sword'] = from_dungeon_level([[15, 11]])
 	item_chances['recharge'] = from_dungeon_level([[10, 3]])
 	item_chances['w_mmissile'] = from_dungeon_level([[10, 4]])
 	item_chances['w_confusion'] = from_dungeon_level([[10, 3]])
@@ -1252,6 +1304,54 @@ def place_objects(room):
 				#create a shield
 				equipment_component = Equipment(slot='left hand', defense_bonus=2)
 				item = Object(x, y, '[', 'shield', libtcod.darker_orange, equipment=equipment_component)
+			elif choice == 'lance':
+				#create a lance
+				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d6', power_bonus=3)
+				item = Object(x, y, '/', 'lance', libtcod.sky, equipment=equipment_component)
+			elif choice == 'battleaxe':
+				#create a battleaxe
+				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d10', power_bonus=3)
+				item = Object(x, y, '/', 'battleaxe', libtcod.sky, equipment=equipment_component)
+			elif choice == 'morningstar':
+				#create a morningstar
+				equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='1d8', power_bonus=3)
+				item = Object(x, y, '/', 'morningstar', libtcod.sky, equipment=equipment_component)
+			elif choice == 'Elvish longbow':
+				#create a longbow
+				equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d6', ranged_bonus=3)
+				item = Object(x, y, '/', 'Elvish longbow', libtcod.sky, equipment=equipment_component)
+			elif choice == 'rapier':
+				#create a lance
+				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d4', power_bonus=3)
+				item = Object(x, y, '/', 'rapier', libtcod.sky, equipment=equipment_component)
+			elif choice == 'h_rapier':
+				#create an ornate rapier
+				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d8', power_bonus=5)
+				item = Object(x, y, '/', 'ornate rapier', libtcod.yellow, equipment=equipment_component)
+			elif choice == 'h_sword':
+				#create bastard sword
+				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d8', power_bonus=5)
+				item = Object(x, y, '/', 'bastard sword', libtcod.yellow, equipment=equipment_component)
+			elif choice == 'h_lance':
+				#create a heavy lance
+				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d10', power_bonus=5)
+				item = Object(x, y, '/', 'heavy lance', libtcod.yellow, equipment=equipment_component)
+			elif choice == 'h_battleaxe':
+				#create a greataxe
+				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d10', power_bonus=5)
+				item = Object(x, y, '/', 'greataxe', libtcod.yellow, equipment=equipment_component)
+			elif choice == 'h_morningstar':
+				#create a heavy morningstar
+				equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d8', power_bonus=5)
+				item = Object(x, y, '/', 'heavy morningstar', libtcod.yellow, equipment=equipment_component)
+			elif choice == 'h_warhammer':
+				#create a heavy warhammer
+				equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d10', power_bonus=5)
+				item = Object(x, y, '/', 'heavy warhammer', libtcod.yellow, equipment=equipment_component)
+			elif choice == 'h_shortbow':
+				#create a gleamwood shortbow
+				equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d10', ranged_bonus=5)
+				item = Object(x, y, '{', 'gleamwood shortbow', libtcod.yellow, equipment=equipment_component)
 			elif choice == 'w_mmissile':
 				#WAND TEST: wand of magic missile
 				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
@@ -1939,7 +2039,7 @@ def cast_confuse():
 	message('The eyes of the ' + monster.name.title() + ' look vacant as it starts to stumble around!', libtcod.light_green)
 	
 def cast_death():
-	#ask player for a target to confuse
+	#ask player for a target for the lethal spell!
 	message('Left click an enemy to cast, or right-click/ESC to cancel.', libtcod.light_cyan)
 	monster = target_monster()
 	if monster is None: return 'cancelled'
@@ -2123,7 +2223,7 @@ def new_game(choice):
 	elif choice == 1:
 		#Knight equipment
 		#starting equipment: a warhammer
-		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d6', power_bonus=1, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel warhammer', libtcod.sky, equipment=equipment_component)
 		inventory.append(obj)
 		equipment_component.equip()
