@@ -223,6 +223,10 @@ class Object:
 			self.y += dy
 			self.fighter.x = self.x
 			self.fighter.y = self.y
+			
+	def wander(self):
+		#move a random square
+		self.owner.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
 
 	def move_towards(self, target_x, target_y):
 		#vector from this object to the target, and distance
@@ -1174,6 +1178,7 @@ def place_objects(room):
 	item_chances['w_death'] = from_dungeon_level([[3, 8]])
 	item_chances['w_warp'] = from_dungeon_level([[10, 3]])
 	item_chances['w_petrify'] = from_dungeon_level([[10, 5]])
+	item_chances['w_swap'] = from_dungeon_level([[10, 3]])
 	item_chances['w2_mmissile'] = from_dungeon_level([[10, 10]])
 	item_chances['w2_confusion'] = from_dungeon_level([[10, 10]])
 	item_chances['w2_fireball'] = from_dungeon_level([[5, 12]])
@@ -1181,6 +1186,7 @@ def place_objects(room):
 	item_chances['w2_death'] = from_dungeon_level([[3, 13]])
 	item_chances['w2_warp'] = from_dungeon_level([[10, 8]])
 	item_chances['w2_petrify'] = from_dungeon_level([[10, 10]])
+	item_chances['w2_swap'] = from_dungeon_level([[10, 7]])
 	
 
 	#choose a random number of monsters
@@ -1380,6 +1386,10 @@ def place_objects(room):
 				#WAND TEST 11: wand of petrification
 				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_petrify)
 				item = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
+			elif choice == 'w_swap':
+				#WAND TEST 12: wand of transposition
+				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_swap)
+				item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
 			elif choice == 'w2_mmissile':
 				#WAND TEST4: fine wand of magic missile
 				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
@@ -1408,6 +1418,10 @@ def place_objects(room):
 				#WAND TEST 12: wand of petrification
 				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_petrify)
 				item = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
+			elif choice == 'w2_swap':
+				#WAND TEST 12: wand of transposition
+				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_swap)
+				item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
 				
 			
 			objects.append(item)
@@ -2091,6 +2105,20 @@ def cast_warp():
 		monster.y = warpy
 		message(monster.name.title() + ' suddenly teleports away in a vortex of swirling purple light.', libtcod.light_blue)
 		#message('New location of creature: ' + str(monster.x) + ', ' + str(monster.y), libtcod.light_blue)
+		
+def	cast_swap():
+	#warp: target creature in FOV gets warped away to a random location
+	message('Choose a target to swap positions with you:', libtcod.light_blue)
+	monster = target_monster_or_player()
+	if monster is None:
+		message('No valid target found!', libtcod.red)
+		return 'didnt-take-turn'
+	else:
+		#do the swap
+		player.x, monster.x = monster.x, player.x
+		player.y, monster.y = monster.y, player.y
+		message(monster.name.title() + ' abruptly finds themselves elsewhere.', libtcod.light_blue)
+		#message('New location of creature: ' + str(monster.x) + ', ' + str(monster.y), libtcod.light_blue)
 	
 
 	
@@ -2170,7 +2198,7 @@ def new_game(choice):
 	global player, inventory, game_msgs, game_state, dungeon_level
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', weaknesses=['phys'], death_function=player_death, role='Fighter')
+		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 1:
@@ -2269,6 +2297,12 @@ def new_game(choice):
 		#WAND TEST 11: wand of petrification
 		wand_component = Wand(charges=5, max_charges=20, zap_function=cast_petrify)
 		obj = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
+		inventory.append(obj)
+		obj.always_visible = True
+		
+		#wand test 12: wand of transposition
+		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_swap)
+		obj = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
 		inventory.append(obj)
 		obj.always_visible = True
 		
