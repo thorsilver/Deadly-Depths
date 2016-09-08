@@ -99,6 +99,12 @@ def damageRoll(dice):
 		sides = int(sides)
 		return roll(sides, number)
 		
+def update_kills(name):
+		if name in kill_count:
+			kill_count[name] += 1
+		else:
+			kill_count[name] = 1
+		
 
 class Tile:
 	#a tile of the map and its properties
@@ -476,6 +482,7 @@ class Fighter:
 			if target.fighter.hp <= 0:
 				if target != player:  #give experience
 					player.fighter.xp += target.fighter.xp
+					update_kills(target.name)
 				function = target.fighter.death_function
 				if function is not None:
 					function(target)	
@@ -501,6 +508,7 @@ class Fighter:
 			if target.fighter.hp <= 0:
 				if target != player:  #give experience
 					player.fighter.xp += target.fighter.xp
+					update_kills(target.name)
 				function = target.fighter.death_function
 				if function is not None:
 					function(target)			
@@ -530,6 +538,8 @@ class Fighter:
 				if target.fighter.hp <= 0:
 					if target != player:  #give experience
 						player.fighter.xp += target.fighter.xp
+						update_kills(target.name)
+						print(kill_count)
 					function = target.fighter.death_function
 					if function is not None:
 						function(target)	
@@ -556,6 +566,7 @@ class Fighter:
 				if target.fighter.hp <= 0:
 					if target != player:  #give experience
 						player.fighter.xp += target.fighter.xp
+						update_kills(target.name)
 					function = target.fighter.death_function
 					if function is not None:
 						function(target)
@@ -1509,6 +1520,7 @@ def message(new_msg, color = libtcod.white):
 		game_msgs.append( (line, color) )
 
 def render_all():
+	global dungeon_level_name
 	global color_dark_wall, color_light_wall
 	global color_dark_ground, color_light_ground
 	global fov_recompute
@@ -1700,9 +1712,12 @@ def player_move_or_attack(dx, dy):
 			poison_damage = libtcod.random_get_int(0, 1, player.level + 1)
 			player.fighter.take_damage(poison_damage, 'poison')
 			message('You took ' + str(poison_damage) + ' damage from poison!', libtcod.purple)
+	#kill player if hp <= 0
+	if player.fighter.hp <= 0:
+		player.fighter.death_function
 			
 	#if poisoned for 10 turns, shake it off
-	if player.fighter.poisoned and player.fighter.turn_count - player.fighter.poison_tick >= 10:
+	if player.fighter.poisoned and player.fighter.turn_count - player.fighter.poison_tick >= 15:
 		player.fighter.poisoned = False
 		message('You recovered from the poison\'s effects!', libtcod.yellow)
 		
@@ -1919,6 +1934,7 @@ def player_death(player):
 	global game_state
 	message('You died!', libtcod.red)
 	game_state = 'dead'
+	character_dump()
 
 	#transform the player into a corpse
 	player.char = '%'
@@ -2245,7 +2261,7 @@ def load_customfont(): #TILES VERSION
 		a += 32
 
 def new_game(choice):
-	global player, inventory, game_msgs, game_state, dungeon_level
+	global player, inventory, game_msgs, kill_count, game_state, dungeon_level
 	if choice == 0:
 		#create player object, Fighter class
 		fighter_component = Fighter(0, 0, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Fighter')
@@ -2275,6 +2291,7 @@ def new_game(choice):
 	
 	game_state = 'playing'
 	inventory = []
+	kill_count = {}
 
 	#create the list of game messages and their colors
 	game_msgs = []
@@ -2404,6 +2421,7 @@ def save_game():
 	file['objects'] = objects
 	file['player_index'] = objects.index(player) #location of player in objects list
 	file['inventory'] = inventory
+	file['kill_count'] = kill_count
 	file['game_msgs'] = game_msgs
 	file['game_state'] = game_state
 	file['stairs_index'] = objects.index(stairs)
@@ -2419,6 +2437,7 @@ def load_game():
 	objects = file['objects']
 	player = objects[file['player_index']] #get index of player and access it
 	inventory = file['inventory']
+	kill_count = file['kill_count']
 	game_msgs = file['game_msgs']
 	game_state = file['game_state']
 	stairs = objects[file['stairs_index']]
@@ -2427,6 +2446,26 @@ def load_game():
 
 	initialize_fov()
 
+def character_dump():
+	global dungeon_level_name
+	timestr = time.strftime("%Y%m%d-%H%M%S")
+	with open('morgue' + timestr + '.txt', 'w') as morgue:
+		morgue.write('Player died in the ' + dungeon_level_name + ' (dungeon level ' + str(dungeon_level) + '), and had gained ' + 
+			str(player.fighter.xp) + ' experience points.\n')
+		morgue.write('\n')
+		morgue.write('Player was a Level ' + str(player.level) + ' ' + str(player.fighter.role) + '.\n')
+		morgue.write('\n')
+		morgue.write('Monsters killed:\n')
+		for k, v in kill_count.items():
+			#line = '{}: {}'.format(k,v)
+			#print(line, file=morgue)
+			morgue.write('\t%s: %s\n' % (k.title(), v))
+		morgue.write('\n')
+		morgue.write('Player\'s inventory:\n')
+		for item in inventory:
+			morgue.write('\t%s\n' % (item.name.title()))
+		morgue.close()
+			
 
 def play_game():
 	global key, mouse
