@@ -539,7 +539,6 @@ class Fighter:
 					if target != player:  #give experience
 						player.fighter.xp += target.fighter.xp
 						update_kills(target.name)
-						print(kill_count)
 					function = target.fighter.death_function
 					if function is not None:
 						function(target)	
