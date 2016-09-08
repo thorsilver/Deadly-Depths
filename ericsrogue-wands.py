@@ -453,8 +453,9 @@ class Fighter:
 			# damage = 1
 		#make a damage roll
 		damage = damageRoll(damage_dice)
+		attack = self.AttackRoll(target.fighter)
 		
-		if self.AttackRoll(target.fighter) == 'hit':
+		if attack == 'hit':
 			#make target take damage if possible
 			result = target.fighter.take_damage(damage, damage_type)
 			#report half damage for resistant targets
@@ -473,21 +474,46 @@ class Fighter:
 				message(self.owner.name.title() + ' attacks ' + target.name.title() + ' for ' + str(result) + ' damage.', libtcod.white)
 			#check for death
 			if target.fighter.hp <= 0:
+				if target != player:  #give experience
+					player.fighter.xp += target.fighter.xp
 				function = target.fighter.death_function
 				if function is not None:
-					function(target)
+					function(target)	
+		elif attack == 'crit':
+			#make target take crit damage if possible
+			critDamage = damage * 2
+			result = target.fighter.take_damage(critDamage, damage_type)
+			#report half damage for resistant targets
+			if result < damage or result == 1:
+				message(self.owner.name.title() + ' smashes ' + target.name.title() + ' for ' + str(result) + 
+					' damage, but ' + target.name.title() + ' seems relatively unfazed.', libtcod.yellow)
+			#report no damage for immune targets
+			elif result == 'immune':
+				message(self.owner.name.title() + ' smashes ' + target.name.title() + ' but ' + target.name.title() + ' shrugs it off completely!', libtcod.red)
+			#report double damage for weak targets
+			elif result > critDamage:
+				message(self.owner.name.title() + ' brutally smashes ' + target.name.title() + ' for ' + str(result) + ' damage, and ' + 
+					target.name.title() + ' screams in pain!', libtcod.orange)
+			else:
+				#report normal damage otherwise
+				message(self.owner.name.title() + ' brutally attacks ' + target.name.title() + ' for ' + str(result) + ' damage.', libtcod.white)
+			#check for death
+			if target.fighter.hp <= 0:
 				if target != player:  #give experience
-					player.fighter.xp += self.xp
-			
-		elif self.AttackRoll(target.fighter) == 'miss':
+					player.fighter.xp += target.fighter.xp
+				function = target.fighter.death_function
+				if function is not None:
+					function(target)			
+		elif attack == 'miss':
 			message(self.owner.name.title() + ' attacks ' + target.name.title() + ' but misses.', libtcod.white)
 			
 	def ranged_attack(self, target, damage_type, damage_dice):
 		#simple formula for ranged damage -- to change later
 		if self.quiver > 0: 
-			if self.ranged_attack_roll(target.fighter) == 'hit':
+			roll = self.ranged_attack_roll(target.fighter)
+			damage = damageRoll(damage_dice)
+			if roll == 'hit':
 				#make target take damage
-				damage = damageRoll(damage_dice)
 				result = target.fighter.take_damage(damage, damage_type)
 				if result < damage or result == 1:
 					message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' for ' + str(result) + 
@@ -502,12 +528,38 @@ class Fighter:
 				self.quiver -= 1
 				#check for death
 				if target.fighter.hp <= 0:
+					if target != player:  #give experience
+						player.fighter.xp += target.fighter.xp
+					function = target.fighter.death_function
+					if function is not None:
+						function(target)	
+			elif roll == 'crit':
+				#make target take crit damage if possible
+				critDamage = damage * 2
+				result = target.fighter.take_damage(critDamage, damage_type)
+				#report half damage for resistant targets
+				if result < damage or result == 1:
+					message(self.owner.name.title() + ' punctures ' + target.name.title() + ' for ' + str(result) + 
+						' damage, but ' + target.name.title() + ' seems relatively unfazed.', libtcod.yellow)
+				#report no damage for immune targets
+				elif result == 'immune':
+					message(self.owner.name.title() + ' successfully punctures ' + target.name.title() + ' but ' + target.name.title() + ' shrugs it off completely!', libtcod.red)
+				#report double damage for weak targets
+				elif result > critDamage:
+					message(self.owner.name.title() + ' brutally punctures ' + target.name.title() + ' for ' + str(result) + ' damage, and ' + 
+						target.name.title() + ' screams in pain!', libtcod.orange)
+				else:
+					#report normal damage otherwise
+					message(self.owner.name.title() + ' brutally punctures ' + target.name.title() + ' for ' + str(result) + ' damage.', libtcod.green)
+				self.quiver -= 1
+				#check for death
+				if target.fighter.hp <= 0:
+					if target != player:  #give experience
+						player.fighter.xp += target.fighter.xp
 					function = target.fighter.death_function
 					if function is not None:
 						function(target)
-					if target != player:  #give experience
-						player.fighter.xp += self.xp
-			elif self.ranged_attack_roll(target.fighter) == 'miss':
+			elif roll == 'miss':
 				message(self.owner.name.title() + ' fires an arrow at ' + target.name.title() + ' but it misses!', libtcod.green)
 				self.quiver -= 1
 			#message('Orc quiver status: ' + str(self.quiver) + ' arrows!', libtcod.white)
@@ -532,26 +584,24 @@ class Fighter:
 			ranged_modifier = -2
 		else:
 			ranged_modifier = 0
-		attackRoll = libtcod.random_get_int(0, 1, 20) + attacker.ranged - ranged_modifier
-		defenseRoll = libtcod.random_get_int(0, 1, 20) + target.defense
+		roll = damageRoll('1d20')
+		attackRoll = roll + attacker.ranged - ranged_modifier
+		defenseRoll = target.defense
 		
-		if attackRoll > defenseRoll:
+		if roll == 20:
+			return 'crit'
+		elif attackRoll > defenseRoll:
 			return 'hit'
 		else:
 			return 'miss'
 	
 	def AttackRoll(attacker, target):
-		attackRoll = libtcod.random_get_int(0, 1, 20) + attacker.power
-		defenseRoll = libtcod.random_get_int(0, 1, 20) + target.defense
-		# if attacker is player:
-			# attackRoll = libtcod.random_get_int(0, 1, 20) + attacker.fighter.base_power
-		# else:
-			# attackRoll = libtcod.random_get_int(0, 1, 20) + attacker.base_power
-		# if target is player:
-			# defenseRoll = libtcod.random_get_int(0, 1, 20) + target.fighter.base_defense
-		# else:
-			# defenseRoll = libtcod.random_get_int(0, 1, 20) + target.base_defense
-		if attackRoll > defenseRoll:
+		roll = damageRoll('1d20')
+		attackRoll = roll + attacker.power
+		defenseRoll = target.defense
+		if roll == 20:
+			return 'crit'
+		elif attackRoll > defenseRoll:
 			return 'hit'
 		else:
 			return 'miss'
@@ -970,7 +1020,7 @@ def make_map():
 			rooms.append(new_room)
 			num_rooms += 1
 	#create stairs in the center of the last room
-	stairs = Object(new_x, new_y, '<', 'stairs', libtcod.white, always_visible=True)
+	stairs = Object(new_x, new_y, '>', 'stairs', libtcod.white, always_visible=True)
 	objects.append(stairs)
 	stairs.send_to_back()
 	
@@ -997,7 +1047,7 @@ def make_bsp():
 	#random room for the stairs
 	stairs_location = random.choice(bsp_rooms)
 	bsp_rooms.remove(stairs_location)
-	stairs = Object(stairs_location[0], stairs_location[1], '<', 'stairs', libtcod.white, always_visible=True)
+	stairs = Object(stairs_location[0], stairs_location[1], '>', 'stairs', libtcod.white, always_visible=True)
 	objects.append(stairs)
 	stairs.send_to_back()
 	
@@ -1206,33 +1256,33 @@ def place_objects(room):
 					mutation_num = 2
 			if choice == 'orc':
 				#create an orc
-				fighter_component = Fighter(x, y, hp=10, defense=0, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'orc archer':
 				#create an orc archer
-				fighter_component = Fighter(x, y, hp=8, defense=0, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
+				fighter_component = Fighter(x, y, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
 				ai_component = ArcherAI()
 				monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 			elif choice == 'orc captain':
 				#create an orc captain
-				fighter_component = Fighter(x, y, hp=20, defense=2, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=20, defense=14, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'O', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'troll':
 				#create a troll
-				fighter_component = Fighter(x, y, hp=30, defense=2, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=30, defense=15, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
 				ai_component = BasicMonster()
 				monster = Object(x, y, 'T', 'troll', libtcod.darker_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'wolf':
 				#create a wolf
-				fighter_component = Fighter(x, y, hp=8, defense=0, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=8, defense=9, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 				ai_component = WolfAI()
 				monster = Object(x, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
 				if not is_blocked(x+1,y):
@@ -1241,17 +1291,17 @@ def place_objects(room):
 					monster = Object(x+1, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
 			
 			elif choice == 'rattlesnake':
-				fighter_component = Fighter(x, y, hp=8, defense=1, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=8, defense=7, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
 			elif choice == 'naga hatchling':
-				fighter_component = Fighter(x, y, hp=16, defense=3, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=16, defense=14, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
 					monster.monster_mutator(mutation_num)
 			elif choice == 'naga':
-				fighter_component = Fighter(x, y, hp=35, defense=6, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
+				fighter_component = Fighter(x, y, hp=35, defense=16, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
 				ai_component = PoisonSpitterAI()
 				monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 				if mutation_roll > 6:
@@ -1813,7 +1863,7 @@ def handle_keys():
 				chosen_item = inventory_menu('Press the key next to an item to drop it, or any other to cancel.\n')
 				if chosen_item is not None:
 					chosen_item.drop()
-			if key_char == '<':
+			if key_char == '>':
 				#go down stairs if player is on them
 				if stairs.x == player.x and stairs.y == player.y:
 					next_level()
@@ -2198,22 +2248,22 @@ def new_game(choice):
 	global player, inventory, game_msgs, game_state, dungeon_level
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, hp=100, defense=2, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Fighter')
+		fighter_component = Fighter(0, 0, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 1:
 		#create player object, Knight class
-		fighter_component = Fighter(0, 0, hp=120, defense=4, power=2, ranged=1, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Knight')
+		fighter_component = Fighter(0, 0, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Knight')
 		player = Object(0, 0, '@', 'player', libtcod.brass, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 2:
 		#create player object, Ranger class
-		fighter_component = Fighter(0, 0, hp=80, defense=1, power=2, ranged=4, quiver=20, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Ranger')
+		fighter_component = Fighter(0, 0, hp=80, defense=10, power=2, ranged=4, quiver=20, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Ranger')
 		player = Object(0, 0, '@', 'player', libtcod.gold, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 3:
 		#create player object, Wizard class
-		fighter_component = Fighter(0, 0, hp=60, defense=1, power=2, ranged=3, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Wizard')
+		fighter_component = Fighter(0, 0, hp=60, defense=9, power=2, ranged=3, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Wizard')
 		player = Object(0, 0, '@', 'player', libtcod.sky, blocks=True, fighter=fighter_component)
 		player.level = 1
 		
