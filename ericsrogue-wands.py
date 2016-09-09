@@ -139,7 +139,7 @@ class Rect:
 class Object:
 	#this is a generic object
 	#it's always represented by an ASCII character
-	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, fighter=None, ai=None, item=None, equipment=None, arrows=None, wand=None):
+	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, fighter=None, ai=None, item=None, equipment=None, arrows=None, wand=None, food=None):
 		self.x = x
 		self.y = y
 		self.char = char
@@ -169,6 +169,11 @@ class Object:
 		self.wand = wand
 		if self.wand:
 			self.wand.owner = self
+			self.item = Item()
+			self.item.owner = self
+		self.food = food
+		if self.food:
+			self.food.owner = self
 			self.item = Item()
 			self.item.owner = self
 			
@@ -382,7 +387,7 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, turn_count=0, poison_tick=0, resistances=[], 
+	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, resistances=[], 
 		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
@@ -393,6 +398,8 @@ class Fighter:
 		self.base_ranged = ranged
 		self.quiver = quiver
 		self.xp = xp
+		self.hunger = hunger
+		self.max_hunger = max_hunger
 		self.damage_type = damage_type
 		self.damage_dice = damage_dice
 		self.turn_count = turn_count
@@ -425,6 +432,21 @@ class Fighter:
 		bonus = sum(equipment.ranged_bonus for equipment in get_all_equipped(self.owner))
 		return self.base_ranged + bonus
 
+	def check_hunger(self):
+		#deduct a point of hunger for every action
+		self.hunger -= 1
+		#check hunger, reduce power and defense if starving
+		if self.hunger == 100:
+			message(self.owner.name.title() + ' is getting hungry!', libtcod.red)
+		elif self.hunger == 50:
+			message(self.owner.name.title() + ' is weak from hunger!', libtcod.red)
+			self.hp -= 1
+		elif self.hunger < 50 and self.hunger % 2 == 0:
+			self.hp -= 1
+			message(self.owner.name.title() + ' is slowly starving!', libtcod.red)
+		if self.hp <= 0:
+			self.check_death()
+		
 	def take_damage(self, damage, type):
 		#apply damage if possible
 		
@@ -451,6 +473,21 @@ class Fighter:
 		dx = other.x - self.x
 		dy = other.y - self.y
 		return math.sqrt(dx ** 2 + dy ** 2)
+		
+	def direct_magic_attack(self, target, damage_dice, type):
+		#for direct magic attacks (magic missile, fireball, lightning, etc.)
+		#try to apply damage, check resistances, etc., and check for death
+		damage = damageRoll(damage_dice)
+		attack = target.take_damage(damage, type)
+		
+	def check_death(self):
+		if self.hp <= 0:
+			if self.owner != player:  #give experience
+				player.fighter.xp += self.xp
+				update_kills(self.owner.name)
+			function = self.death_function
+			if function is not None:
+				function(self.owner)
 	
 	def attack(self, target, damage_type, damage_dice):
 		#a simple formula for physical attack damage
@@ -777,12 +814,14 @@ class Item:
 			return
 		
 		#special case: if object is Wand, use action is wand_use_function
-		# if self.owner.wand:
-			# if self.owner.wand.wand_use_function() == 'didnt-take-turn' or self.owner.wand.wand_use_function() == 'cancelled':
-				# return 'didnt-take-turn'
-			# return
 		if self.owner.wand:
 			self.owner.wand.wand_use_function()
+			return
+			
+		#special case: if object is Food, add Nutrition to user's Hunger
+		if self.owner.food:
+			self.owner.food.eat(self.owner.food.nutrition)
+			inventory.remove(self.owner)
 			return
 		
 		#just call the use_function if it is defined
@@ -840,6 +879,18 @@ class Arrows:
 		self.type = type
 		self.number = number
 		
+class Food:
+	#food items that can be eaten to replenish hunger
+	def __init__(self, type, nutrition):
+		self.type = type
+		self.nutrition = nutrition
+		
+	def eat(self, amount):
+		player.fighter.hunger += amount
+		if player.fighter.hunger > player.fighter.max_hunger:
+			player.fighter.hunger = player.fighter.max_hunger
+		message('You feel more satisfied.', libtcod.light_green)
+		
 class Wand:
 	#wand items that contain multi-use spells with limited charges. can be recharged with potions or scrolls.
 	#wands can have up to three different functions:
@@ -882,9 +933,15 @@ def cast_magic_missile():
 		return 'didnt-take-turn'
 	else:
 		#magic missile
-		missile_damage = libtcod.random_get_int(0, 4, 8) #+ player.fighter.sorcery - monster.fighter.magic_res
-		message('A spear of brilliant blue light strikes ' + monster.name.title() + ' for ' + str(missile_damage) + ' damage!', libtcod.light_blue)
-		monster.fighter.take_damage(missile_damage, 'magic')
+		missile_damage = damageRoll('2d6') #+ player.fighter.sorcery - monster.fighter.magic_res
+		attack = monster.fighter.take_damage(missile_damage, 'magic')
+		if attack != 'immune':
+			message('A spear of brilliant blue light strikes ' + monster.name.title() + ' for ' + str(missile_damage) + ' damage!', libtcod.light_blue)
+			monster.fighter.check_death()
+		else:
+			message(monster.name.title() + ' is unaffected by the spell!', libtcod.red)
+			
+		
 	
 
 def get_equipped_in_slot(slot): #returns equipment in slot, None if empty
@@ -1212,6 +1269,7 @@ def place_objects(room):
 	#chances for each item
 	item_chances = {}
 	item_chances['heal'] = 35 #healing pots always show up
+	item_chances['ration pack'] = 20
 	item_chances['antidote'] = 25 #antidotes always show up
 	item_chances['lightning'] = from_dungeon_level([[25, 4]])
 	item_chances['fireball'] = from_dungeon_level([[25, 6]])
@@ -1334,6 +1392,10 @@ def place_objects(room):
 				#create a healing potion
 				item_component = Item(use_function=cast_heal)
 				item = Object(x, y, '!', 'healing potion', libtcod.pink, item=item_component)
+			elif choice == 'ration pack':
+				#create a ration pack
+				food_component = Food('normal', 500)
+				item = Object(x, y, '%', 'ration pack', libtcod.sepia, food=food_component)
 			elif choice == 'recharge':
 				#create a recharge potion
 				item_component = Item(use_function=cast_recharge)
@@ -1667,13 +1729,15 @@ def render_all():
 	level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR
 	render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
 		libtcod.light_red, libtcod.darker_red)
-	render_bar(1, 2, BAR_WIDTH, 'XP', player.fighter.xp, level_up_xp,
+	render_bar(1, 2, BAR_WIDTH, 'Satiety', player.fighter.hunger, player.fighter.max_hunger, libtcod.green, libtcod.darker_green)
+	render_bar(1, 3, BAR_WIDTH, 'XP', player.fighter.xp, level_up_xp,
 		libtcod.blue, libtcod.darker_blue)
-	libtcod.console_print_ex(panel, 1, 3, libtcod.BKGND_NONE, libtcod.LEFT, 'Level ' + str(player.level) + ' ' + player.fighter.role)
-	libtcod.console_print_ex(panel, 1, 4, libtcod.BKGND_NONE, libtcod.LEFT, dungeon_level_name + ' (' + str(dungeon_level) + ')')
-	libtcod.console_print_ex(panel, 1, 5, libtcod.BKGND_NONE, libtcod.LEFT, 'Turns: ' + str(player.fighter.turn_count))
-	if player.fighter.poisoned == True:
-		libtcod.console_print_ex(panel, 1, 6, libtcod.BKGND_NONE, libtcod.LEFT, '!!POISONED!!')
+	
+	libtcod.console_print_ex(panel, 1, 4, libtcod.BKGND_NONE, libtcod.LEFT, 'Level ' + str(player.level) + ' ' + player.fighter.role)
+	libtcod.console_print_ex(panel, 1, 5, libtcod.BKGND_NONE, libtcod.LEFT, dungeon_level_name + ' (' + str(dungeon_level) + ')')
+	libtcod.console_print_ex(panel, 1, 6, libtcod.BKGND_NONE, libtcod.LEFT, 'Turns: ' + str(player.fighter.turn_count))
+	#if player.fighter.poisoned == True:
+	#	libtcod.console_print_ex(panel, 1, 6, libtcod.BKGND_NONE, libtcod.LEFT, '!!POISONED!!')
 
 	#display names of objects under the mouse
 	libtcod.console_set_default_foreground(panel, libtcod.light_gray)
@@ -1721,7 +1785,7 @@ def player_move_or_attack(dx, dy):
 		message('You recovered from the poison\'s effects!', libtcod.yellow)
 		
 	player.fighter.turn_count += 1
-		
+	player.fighter.check_hunger()
 
 def menu(header, options, width):
 	if len(options) > 26: raise ValueError('Cannot have a menu with more than 26 options.')
@@ -2103,8 +2167,13 @@ def cast_lightning():
 		return 'cancelled'
 
 	#bolt of lightning
-	message('A lightning bolt strikes the ' + monster.name.title() + ' for ' + str(LIGHTNING_DAMAGE) + ' damage!', libtcod.light_blue)
-	monster.fighter.take_damage(LIGHTNING_DAMAGE, 'thunder')
+	attack = monster.fighter.take_damage(LIGHTNING_DAMAGE, 'thunder')
+	if attack != 'immune':
+		message('A lightning bolt strikes the ' + monster.name.title() + ' for ' + str(LIGHTNING_DAMAGE) + ' damage!', libtcod.light_blue)
+		monster.fighter.check_death()
+	else:
+		message(monster.name.title() + ' is immune to the spell!', libtcod.red)
+	
 
 def cast_confuse():
 	#ask the player for a target to confuse
@@ -2122,10 +2191,16 @@ def cast_death():
 	message('Left click an enemy to cast, or right-click/ESC to cancel.', libtcod.light_cyan)
 	monster = target_monster()
 	if monster is None: return 'cancelled'
-	#kill monster (later: if magic res doesn't save it)
-	message(monster.name.title() + ' dies instantly, its soul banished from existence.', libtcod.grey)
-	death_strike = monster.fighter.hp
-	monster.fighter.take_damage(death_strike, 'death')
+	#kill monster, unless immune
+	death_strike = monster.fighter.hp * 2
+	attack = monster.fighter.take_damage(death_strike, 'death')
+	if attack != 'immune':
+		message(monster.name.title() + ' dies instantly, its soul banished from existence.', libtcod.grey)
+		monster.fighter.check_death()
+	else:
+		message(monster.name.title() + ' somehow survives the deadly magic attack.', libtcod.red)
+	
+	
 	
 def cast_petrify():
 	#global player 
@@ -2195,8 +2270,13 @@ def cast_fireball():
 	message('The fireball explodes, burning everything within ' + str(FIREBALL_RADIUS) + ' tiles!', libtcod.orange)
 	for obj in objects: #damage every fighter in range, including the player
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.fighter:
-			message('The ' + obj.name.title() + ' gets burned for ' + str(FIREBALL_DAMAGE) + ' damage.', libtcod.orange)
-			obj.fighter.take_damage(FIREBALL_DAMAGE, 'fire')
+			attack = obj.fighter.take_damage(FIREBALL_DAMAGE, 'fire')
+			if attack != 'immune':
+				message('The ' + obj.name.title() + ' gets burned for ' + str(FIREBALL_DAMAGE) + ' damage.', libtcod.orange)
+				obj.fighter.check_death()
+			else:
+				message('The ' + obj.name.title() + ' is immune to fire!', libtcod.red)
+			
 			
 def fire_arrow():
 	#ask the player for a target
@@ -2263,22 +2343,26 @@ def new_game(choice):
 	global player, inventory, game_msgs, kill_count, game_state, dungeon_level
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Fighter')
+		fighter_component = Fighter(0, 0, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, 
+			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 1:
 		#create player object, Knight class
-		fighter_component = Fighter(0, 0, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Knight')
+		fighter_component = Fighter(0, 0, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, 
+			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Knight')
 		player = Object(0, 0, '@', 'player', libtcod.brass, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 2:
 		#create player object, Ranger class
-		fighter_component = Fighter(0, 0, hp=80, defense=10, power=2, ranged=4, quiver=20, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Ranger')
+		fighter_component = Fighter(0, 0, hp=80, defense=10, power=2, ranged=4, quiver=20, xp=0, 
+			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Ranger')
 		player = Object(0, 0, '@', 'player', libtcod.gold, blocks=True, fighter=fighter_component)
 		player.level = 1
 	elif choice == 3:
 		#create player object, Wizard class
-		fighter_component = Fighter(0, 0, hp=60, defense=9, power=2, ranged=3, quiver=0, xp=0, damage_type='phys', damage_dice='1d4', death_function=player_death, role='Wizard')
+		fighter_component = Fighter(0, 0, hp=60, defense=9, power=2, ranged=3, quiver=0, xp=0, 
+			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Wizard')
 		player = Object(0, 0, '@', 'player', libtcod.sky, blocks=True, fighter=fighter_component)
 		player.level = 1
 		
@@ -2378,24 +2462,38 @@ def new_game(choice):
 		obj = Object(0, 0, '!', 'recharge potion', libtcod.light_blue, item=item_component)
 		inventory.append(obj)
 		
+		#WAND TEST 7: wand of fireball
+		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_fireball)
+		obj = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
+		inventory.append(obj)
+		
+		#WAND TEST 9: wand of death
+		wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
+		obj = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
+		inventory.append(obj)
+		
 		# #WAND TEST 10: wand of teleportation
 		# wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
 		# obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 		# inventory.append(obj)
 		# obj.always_visible = True
 		
-		# #WAND TEST 2: wand of lightning
-		# wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
-		# obj = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
-		# inventory.append(obj)
-		# obj.always_visible = True
+		#WAND TEST 2: wand of lightning
+		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
+		obj = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
+		inventory.append(obj)
+		obj.always_visible = True
 		
 		# #WAND TEST 3: wand of confusion
 		# wand_component = Wand(charges=5, max_charges=15, zap_function=cast_confuse)
 		# obj = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
 		# inventory.append(obj)
 		# obj.always_visible = True
-		
+	
+	for rations in range(3):
+		food_component = Food('normal', 500)
+		obj = Object(0, 0, '%', 'ration pack', libtcod.sepia, food=food_component)
+		inventory.append(obj)
 		
 
 
@@ -2449,7 +2547,7 @@ def character_dump():
 	global dungeon_level_name
 	timestr = time.strftime("%Y%m%d-%H%M%S")
 	with open('morgue' + timestr + '.txt', 'w') as morgue:
-		morgue.write('Player died in the ' + dungeon_level_name + ' (dungeon level ' + str(dungeon_level) + '), and had gained ' + 
+		morgue.write('Player died in the ' + dungeon_level_name + ' (dungeon level ' + str(dungeon_level) + '), and had ' + 
 			str(player.fighter.xp) + ' experience points.\n')
 		morgue.write('\n')
 		morgue.write('Player was a Level ' + str(player.level) + ' ' + str(player.fighter.role) + '.\n')
