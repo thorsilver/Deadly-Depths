@@ -819,10 +819,13 @@ class Item:
 			return
 			
 		#special case: if object is Food, add Nutrition to user's Hunger
-		if self.owner.food:
+		if self.owner.food and player.fighter.hunger < 500:
 			self.owner.food.eat(self.owner.food.nutrition)
 			inventory.remove(self.owner)
 			return
+		else:
+			message('You are already full!', libtcod.green)
+			return 'cancelled'
 		
 		#just call the use_function if it is defined
 		if self.use_function is None:
@@ -1729,7 +1732,7 @@ def render_all():
 	level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR
 	render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
 		libtcod.light_red, libtcod.darker_red)
-	render_bar(1, 2, BAR_WIDTH, 'Satiety', player.fighter.hunger, player.fighter.max_hunger, libtcod.green, libtcod.darker_green)
+	render_bar(1, 2, BAR_WIDTH, 'Satiety', player.fighter.hunger, player.fighter.max_hunger, libtcod.dark_green, libtcod.darker_green)
 	render_bar(1, 3, BAR_WIDTH, 'XP', player.fighter.xp, level_up_xp,
 		libtcod.blue, libtcod.darker_blue)
 	
