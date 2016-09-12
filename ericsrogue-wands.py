@@ -671,7 +671,19 @@ class BasicMonster:
 				type = monster.fighter.damage_type
 				dice = monster.fighter.damage_dice
 				monster.fighter.attack(player, type, dice)
-
+				
+class BasicUndead:
+	def take_turn(self):
+		#AI for a basic undead monster -- mindlessly advance, 1/4 of the time too stupid to act
+		monster = self.owner
+		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and damageRoll('1d4') > 1:
+			if monster.distance_to(player) >= 2:
+				monster.move_dijk(player)
+			elif player.fighter.hp > 0:
+				type = monster.fighter.damage_type
+				dice = monster.fighter.damage_dice
+				monster.fighter.attack(player, type, dice)
+			
 class WolfAI:
 	#AI for a wolf - they can attack from outside FOV, and howl for extra power when injured!
 	def take_turn(self):
@@ -823,7 +835,7 @@ class Item:
 			self.owner.food.eat(self.owner.food.nutrition)
 			inventory.remove(self.owner)
 			return
-		else:
+		elif self.owner.food and player.fighter.hunger == 500:
 			message('You are already full!', libtcod.green)
 			return 'cancelled'
 		
@@ -1002,6 +1014,10 @@ def is_blocked(x, y):
 			return True
 
 	return False
+	
+#############################
+# MAP GEN FROM TUTORIAL
+#############################
 
 def create_room(room):
 	global map
@@ -1093,7 +1109,8 @@ def make_map():
 	stairs = Object(new_x, new_y, '>', 'stairs', libtcod.white, always_visible=True)
 	objects.append(stairs)
 	stairs.send_to_back()
-	
+
+				
 ###############################
 # BSP EXPERIMENTATION
 ###############################
@@ -1262,6 +1279,8 @@ def place_objects(room):
 	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
 	monster_chances['wolf'] = 60 #wolf always shows up
 	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
+	monster_chances['zombie'] = 20
+	monster_chances['skel_warrior'] = 20
 	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
 	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
 	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
@@ -1325,6 +1344,16 @@ def place_objects(room):
 				mutation_num = mutation_roll - 6
 				if mutation_num > 2:
 					mutation_num = 2
+			if choice == 'zombie':
+				#create a basic zombie
+				fighter_component = Fighter(x, y, hp=10, defense=11, power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', immunities=['death', 'mind'], death_function=monster_death)
+				ai_component = BasicUndead()
+				monster = Object(x, y, 'z', 'zombie', libtcod.dark_purple, blocks=True, fighter=fighter_component, ai=ai_component)
+			if choice == 'skel_warrior':
+				#create a basic skeleton
+				fighter_component = Fighter(x, y, hp=15, defense=13, power=7, ranged=0, quiver=0, xp=45, damage_type='phys', damage_dice='1d6', immunities=['death', 'mind', 'pierce'], death_function=monster_death)
+				ai_component = BasicUndead()
+				monster = Object(x, y, 'z', 'skeleton warrior', libtcod.white, blocks=True, fighter=fighter_component, ai=ai_component)
 			if choice == 'orc':
 				#create an orc
 				fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
@@ -1998,7 +2027,7 @@ def check_level_up():
 def player_death(player):
 	#game over!
 	global game_state
-	message('You died!', libtcod.red)
+	message('You died!  Your exploits have been recorded.  Press Esc to return to the menu.', libtcod.red)
 	game_state = 'dead'
 	character_dump()
 
@@ -2184,10 +2213,14 @@ def cast_confuse():
 	monster = target_monster(CONFUSE_RANGE)
 	if monster is None: return 'cancelled'
 	#replace monster AI with confused AI
-	old_ai = monster.ai
-	monster.ai = ConfusedMonster(old_ai)
-	monster.ai.owner = monster
-	message('The eyes of the ' + monster.name.title() + ' look vacant as it starts to stumble around!', libtcod.light_green)
+	if 'mind' not in monster.fighter.immunities:
+		old_ai = monster.ai
+		monster.ai = ConfusedMonster(old_ai)
+		monster.ai.owner = monster
+		message('The eyes of the ' + monster.name.title() + ' look vacant as it starts to stumble around!', libtcod.light_green)
+	else:
+		message('The ' + monster.name.title() + ' is a mindless abomination, unaffected by spells of that type.', libtcod.red)
+		return 'cancelled'
 	
 def cast_death():
 	#ask player for a target for the lethal spell!
@@ -2371,8 +2404,8 @@ def new_game(choice):
 		
 	#generate map (not drawn yet)
 	dungeon_level = 1
-	make_bsp()
-	#make_map()
+	#make_bsp()
+	make_map()
 	initialize_fov()
 	
 	game_state = 'playing'
