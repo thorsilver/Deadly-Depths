@@ -2405,8 +2405,7 @@ def new_game(choice):
 	#generate map (not drawn yet)
 	dungeon_level = 1
 	#make_bsp()
-	#make_map()
-	make_maze()
+	make_map()
 	initialize_fov()
 	
 	game_state = 'playing'
