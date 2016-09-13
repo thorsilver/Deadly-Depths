@@ -181,10 +181,12 @@ class Object:
 		last_mut = 0
 		for mutation in range(mut_strength):
 			mut_choice = libtcod.random_get_int(0, 1, 6)
-			if mut_choice == last_mut:
-				mut_choice -= 1
 			if mut_choice == 6 and 'naga' in self.name:
 				mut_choice -= 1
+			if mut_choice == last_mut and mut_choice != 1:
+				mut_choice -= 1
+			elif mut_choice == last_mut and mut_choice == 1:
+				mut_choice += 1
 			if mut_choice == 6:
 				self.fighter.base_ranged += 4
 				self.fighter.xp += 35
@@ -219,13 +221,14 @@ class Object:
 				self.fighter.xp += 15
 				self.color += libtcod.dark_grey
 				self.name = 'armored ' + self.name
-				last_mut = 1
+				last_mut = 2
 			if mut_choice == 1:
 				self.fighter.power += 2
 				self.fighter.defense += 2
 				self.fighter.xp += 15
 				self.color += libtcod.dark_yellow
 				self.name = 'dire ' + self.name
+				last_mut = 1
 
 	def move(self, dx, dy):
 		if not is_blocked(self.x + dx, self.y + dy):
@@ -1266,6 +1269,237 @@ def hline_right(map, x, y):
 #END BSP STUFF
 ###############################
 
+def spawn_monster(x, y, choice, mutation_roll, mutation_num):
+	if choice == 'zombie':
+		#create a basic zombie
+		fighter_component = Fighter(x, y, hp=10, defense=11, power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', immunities=['death', 'mind'], death_function=monster_death)
+		ai_component = BasicUndead()
+		monster = Object(x, y, 'z', 'zombie', libtcod.dark_purple, blocks=True, fighter=fighter_component, ai=ai_component)
+	if choice == 'skel_warrior':
+		#create a basic skeleton
+		fighter_component = Fighter(x, y, hp=15, defense=13, power=7, ranged=0, quiver=0, xp=45, damage_type='phys', damage_dice='1d6', immunities=['death', 'mind', 'pierce'], death_function=monster_death)
+		ai_component = BasicUndead()
+		monster = Object(x, y, 'z', 'skeleton warrior', libtcod.white, blocks=True, fighter=fighter_component, ai=ai_component)
+	if choice == 'orc':
+		#create an orc
+		fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+		ai_component = BasicMonster()
+		monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks=True, fighter=fighter_component, ai=ai_component)
+		if mutation_roll > 6:
+			monster.monster_mutator(mutation_num)
+	elif choice == 'orc archer':
+		#create an orc archer
+		fighter_component = Fighter(x, y, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
+		ai_component = ArcherAI()
+		monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+	elif choice == 'orc captain':
+		#create an orc captain
+		fighter_component = Fighter(x, y, hp=20, defense=14, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
+		ai_component = BasicMonster()
+		monster = Object(x, y, 'O', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
+		if mutation_roll > 6:
+			monster.monster_mutator(mutation_num)
+	elif choice == 'troll':
+		#create a troll
+		fighter_component = Fighter(x, y, hp=30, defense=15, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
+		ai_component = BasicMonster()
+		monster = Object(x, y, 'T', 'troll', libtcod.darker_green, blocks=True, fighter=fighter_component, ai=ai_component)
+		if mutation_roll > 6:
+			monster.monster_mutator(mutation_num)
+	elif choice == 'wolf':
+		#create a wolf
+		fighter_component = Fighter(x, y, hp=8, defense=9, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+		ai_component = WolfAI()
+		monster = Object(x, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
+		if not is_blocked(x+1,y):
+			fighter_component = Fighter(x, y, hp=10, defense=0, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+			ai_component = WolfAI()
+			monster = Object(x+1, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
+	
+	elif choice == 'rattlesnake':
+		fighter_component = Fighter(x, y, hp=8, defense=7, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
+		ai_component = PoisonSpitterAI()
+		monster = Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
+	elif choice == 'naga hatchling':
+		fighter_component = Fighter(x, y, hp=16, defense=14, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
+		ai_component = PoisonSpitterAI()
+		monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+		if mutation_roll > 6:
+			monster.monster_mutator(mutation_num)
+	elif choice == 'naga':
+		fighter_component = Fighter(x, y, hp=35, defense=16, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
+		ai_component = PoisonSpitterAI()
+		monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+		if mutation_roll > 6:
+			monster.monster_mutator(mutation_num)
+			
+	objects.append(monster)
+	
+def place_item(x, y, choice):
+	if choice == 'heal':
+		#create a healing potion
+		item_component = Item(use_function=cast_heal)
+		item = Object(x, y, '!', 'healing potion', libtcod.pink, item=item_component)
+	elif choice == 'ration pack':
+		#create a ration pack
+		food_component = Food('normal', 300)
+		item = Object(x, y, '%', 'ration pack', libtcod.sepia, food=food_component)
+	elif choice == 'recharge':
+		#create a recharge potion
+		item_component = Item(use_function=cast_recharge)
+		item = Object(x, y, '!', 'recharge potion', libtcod.light_blue, item=item_component)
+	elif choice == 'lightning':
+		#create a lightning bolt scroll
+		item_component = Item(use_function=cast_lightning)
+		item = Object(x, y, '#', 'scroll of lightning bolt', libtcod.light_yellow, item=item_component)
+	elif choice == 'fireball':
+		#create a fireball scroll
+		item_component = Item(use_function=cast_fireball)
+		item = Object(x, y, '#', 'scroll of fireball', libtcod.light_yellow, item=item_component)
+	elif choice == 'confuse':
+		#create a confuse scroll
+		item_component = Item(use_function=cast_confuse)
+		item = Object(x, y, '#', 'scroll of confusion', libtcod.light_yellow, item=item_component)
+	elif choice == 'warp':
+		#create a warp scroll
+		item_component = Item (use_function=cast_warp)
+		item = Object(x, y, '#', 'scroll of teleportation', libtcod.light_yellow, item=item_component)
+	elif choice == 'petrify':
+		#create a petrify scroll
+		item_component = Item(use_function=cast_petrify)
+		item = Object(x, y, '#', 'scroll of petrification', libtcod.light_yellow, item=item_component)
+	elif choice == 'antidote':
+		#create an antidote:
+		item_component = Item(use_function=cast_antidote)
+		item = Object(x, y, '!', 'antidote', libtcod.purple, item=item_component)
+	elif choice == 'orcbow':
+		#create an Orcish shortbow
+		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='1d6', power_bonus=0, ranged_bonus=2)
+		item = Object(x, y, '{', 'Orcish shortbow', libtcod.brass, equipment=equipment_component)
+	elif choice == 'longsword':
+		#create a longsword
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3)
+		item = Object(x, y, '/', 'longsword', libtcod.sky, equipment=equipment_component)
+	elif choice == 'shield':
+		#create a shield
+		equipment_component = Equipment(slot='left hand', defense_bonus=2)
+		item = Object(x, y, '[', 'shield', libtcod.darker_orange, equipment=equipment_component)
+	elif choice == 'lance':
+		#create a lance
+		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d6', power_bonus=3)
+		item = Object(x, y, '/', 'lance', libtcod.sky, equipment=equipment_component)
+	elif choice == 'battleaxe':
+		#create a battleaxe
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d10', power_bonus=3)
+		item = Object(x, y, '/', 'battleaxe', libtcod.sky, equipment=equipment_component)
+	elif choice == 'morningstar':
+		#create a morningstar
+		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='1d8', power_bonus=3)
+		item = Object(x, y, '/', 'morningstar', libtcod.sky, equipment=equipment_component)
+	elif choice == 'Elvish longbow':
+		#create a longbow
+		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d6', ranged_bonus=3)
+		item = Object(x, y, '/', 'Elvish longbow', libtcod.sky, equipment=equipment_component)
+	elif choice == 'rapier':
+		#create a lance
+		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d4', power_bonus=3)
+		item = Object(x, y, '/', 'rapier', libtcod.sky, equipment=equipment_component)
+	elif choice == 'h_rapier':
+		#create an ornate rapier
+		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d8', power_bonus=5)
+		item = Object(x, y, '/', 'ornate rapier', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'h_sword':
+		#create bastard sword
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d8', power_bonus=5)
+		item = Object(x, y, '/', 'bastard sword', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'h_lance':
+		#create a heavy lance
+		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d10', power_bonus=5)
+		item = Object(x, y, '/', 'heavy lance', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'h_battleaxe':
+		#create a greataxe
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d10', power_bonus=5)
+		item = Object(x, y, '/', 'greataxe', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'h_morningstar':
+		#create a heavy morningstar
+		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d8', power_bonus=5)
+		item = Object(x, y, '/', 'heavy morningstar', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'h_warhammer':
+		#create a heavy warhammer
+		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d10', power_bonus=5)
+		item = Object(x, y, '/', 'heavy warhammer', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'h_shortbow':
+		#create a gleamwood shortbow
+		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d10', ranged_bonus=5)
+		item = Object(x, y, '{', 'gleamwood shortbow', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'w_mmissile':
+		#WAND TEST: wand of magic missile
+		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
+		item = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
+	elif choice == 'w_lightning':
+		#WAND TEST 2: wand of lightning
+		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
+		item = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
+	elif choice == 'w_confusion':
+		#WAND TEST 3: wand of confusion
+		wand_component = Wand(charges=7, max_charges=15, zap_function=cast_confuse)
+		item = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
+	elif choice == 'w_fireball':
+		#WAND TEST 7: wand of fireball
+		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_fireball)
+		item = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
+	elif choice == 'w_death':
+		#WAND TEST 9: wand of death
+		wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
+		item = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
+	elif choice == 'w_warp':
+		#WAND TEST 10: wand of teleportation
+		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
+		item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+	elif choice == 'w_petrify':
+		#WAND TEST 11: wand of petrification
+		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_petrify)
+		item = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
+	elif choice == 'w_swap':
+		#WAND TEST 12: wand of transposition
+		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_swap)
+		item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
+	elif choice == 'w2_mmissile':
+		#WAND TEST4: fine wand of magic missile
+		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
+		item = Object(0, 0, '/', 'wand of magic missile', libtcod.light_orange, wand=wand_component)
+	elif choice == 'w2_lightning':
+		#WAND TEST 5: fine wand of lightning
+		wand_component = Wand(charges=10, max_charges=10, zap_function=cast_lightning)
+		item = Object(0, 0, '/', 'wand of lightning', libtcod.light_yellow, wand=wand_component)
+	elif choice == 'w2_confusion':
+		#WAND TEST 6: fine wand of confusion
+		wand_component = Wand(charges=15, max_charges=15, zap_function=cast_confuse)
+		item = Object(0, 0, '/', 'wand of confusion', libtcod.light_sky, wand=wand_component)
+	elif choice == 'w2_fireball':
+		#WAND TEST 8: fine wand of fireball
+		wand_component = Wand(charges=10, max_charges=10, zap_function=cast_fireball)
+		item = Object(0, 0, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
+	elif choice == 'w2_death':
+		#WAND TEST 9: ornate wand of death
+		wand_component = Wand(charges=7, max_charges=10, zap_function=cast_death)
+		item = Object(0, 0, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
+	elif choice == 'w2_warp':
+		#WAND TEST 10: fine wand of teleportation
+		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_warp)
+		item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+	elif choice == 'w2_petrify':
+		#WAND TEST 12: wand of petrification
+		wand_component = Wand(charges=10, max_charges=10, zap_function=cast_petrify)
+		item = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
+	elif choice == 'w2_swap':
+		#WAND TEST 12: wand of transposition
+		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_swap)
+		item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
+	objects.append(item)
+	item.send_to_back() #items appear behind other objects
+	item.always_visible=True #items always visible once explored
+
 def place_objects(room):
 	#first we decide the chance of each monster or item showing up
 	
@@ -1296,6 +1530,7 @@ def place_objects(room):
 	item_chances['lightning'] = from_dungeon_level([[25, 4]])
 	item_chances['fireball'] = from_dungeon_level([[25, 6]])
 	item_chances['confuse'] = from_dungeon_level([[10, 2]])
+	item_chances['orcbow'] = from_dungeon_level([[5, 3]])
 	item_chances['longsword'] = from_dungeon_level([[5, 4]])
 	item_chances['shield'] = from_dungeon_level([[15, 6]])
 	item_chances['lance'] = from_dungeon_level([[15, 6]])
@@ -1340,74 +1575,12 @@ def place_objects(room):
 		if not is_blocked(x, y):
 			choice = random_choice(monster_chances)
 			mutation_roll = libtcod.random_get_int(0, 1, 6) + dungeon_level
+			mutation_num = 0
 			if mutation_roll > 6:
 				mutation_num = mutation_roll - 6
 				if mutation_num > 2:
 					mutation_num = 2
-			if choice == 'zombie':
-				#create a basic zombie
-				fighter_component = Fighter(x, y, hp=10, defense=11, power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', immunities=['death', 'mind'], death_function=monster_death)
-				ai_component = BasicUndead()
-				monster = Object(x, y, 'z', 'zombie', libtcod.dark_purple, blocks=True, fighter=fighter_component, ai=ai_component)
-			if choice == 'skel_warrior':
-				#create a basic skeleton
-				fighter_component = Fighter(x, y, hp=15, defense=13, power=7, ranged=0, quiver=0, xp=45, damage_type='phys', damage_dice='1d6', immunities=['death', 'mind', 'pierce'], death_function=monster_death)
-				ai_component = BasicUndead()
-				monster = Object(x, y, 'z', 'skeleton warrior', libtcod.white, blocks=True, fighter=fighter_component, ai=ai_component)
-			if choice == 'orc':
-				#create an orc
-				fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
-				ai_component = BasicMonster()
-				monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks=True, fighter=fighter_component, ai=ai_component)
-				if mutation_roll > 6:
-					monster.monster_mutator(mutation_num)
-			elif choice == 'orc archer':
-				#create an orc archer
-				fighter_component = Fighter(x, y, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
-				ai_component = ArcherAI()
-				monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
-			elif choice == 'orc captain':
-				#create an orc captain
-				fighter_component = Fighter(x, y, hp=20, defense=14, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
-				ai_component = BasicMonster()
-				monster = Object(x, y, 'O', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
-				if mutation_roll > 6:
-					monster.monster_mutator(mutation_num)
-			elif choice == 'troll':
-				#create a troll
-				fighter_component = Fighter(x, y, hp=30, defense=15, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
-				ai_component = BasicMonster()
-				monster = Object(x, y, 'T', 'troll', libtcod.darker_green, blocks=True, fighter=fighter_component, ai=ai_component)
-				if mutation_roll > 6:
-					monster.monster_mutator(mutation_num)
-			elif choice == 'wolf':
-				#create a wolf
-				fighter_component = Fighter(x, y, hp=8, defense=9, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
-				ai_component = WolfAI()
-				monster = Object(x, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
-				if not is_blocked(x+1,y):
-					fighter_component = Fighter(x, y, hp=10, defense=0, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
-					ai_component = WolfAI()
-					monster = Object(x+1, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
-			
-			elif choice == 'rattlesnake':
-				fighter_component = Fighter(x, y, hp=8, defense=7, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
-				ai_component = PoisonSpitterAI()
-				monster = Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
-			elif choice == 'naga hatchling':
-				fighter_component = Fighter(x, y, hp=16, defense=14, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
-				ai_component = PoisonSpitterAI()
-				monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
-				if mutation_roll > 6:
-					monster.monster_mutator(mutation_num)
-			elif choice == 'naga':
-				fighter_component = Fighter(x, y, hp=35, defense=16, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
-				ai_component = PoisonSpitterAI()
-				monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
-				if mutation_roll > 6:
-					monster.monster_mutator(mutation_num)
-					
-			objects.append(monster)
+			spawn_monster(x, y, choice, mutation_roll, mutation_num)
 
 	#choose random number of items
 	num_items = libtcod.random_get_int(0, 0, max_items)
@@ -1420,167 +1593,7 @@ def place_objects(room):
 		#only place it if tile is not blocked
 		if not is_blocked(x, y):
 			choice = random_choice(item_chances)
-			if choice == 'heal':
-				#create a healing potion
-				item_component = Item(use_function=cast_heal)
-				item = Object(x, y, '!', 'healing potion', libtcod.pink, item=item_component)
-			elif choice == 'ration pack':
-				#create a ration pack
-				food_component = Food('normal', 500)
-				item = Object(x, y, '%', 'ration pack', libtcod.sepia, food=food_component)
-			elif choice == 'recharge':
-				#create a recharge potion
-				item_component = Item(use_function=cast_recharge)
-				item = Object(x, y, '!', 'recharge potion', libtcod.light_blue, item=item_component)
-			elif choice == 'lightning':
-				#create a lightning bolt scroll
-				item_component = Item(use_function=cast_lightning)
-				item = Object(x, y, '#', 'scroll of lightning bolt', libtcod.light_yellow, item=item_component)
-			elif choice == 'fireball':
-				#create a fireball scroll
-				item_component = Item(use_function=cast_fireball)
-				item = Object(x, y, '#', 'scroll of fireball', libtcod.light_yellow, item=item_component)
-			elif choice == 'confuse':
-				#create a confuse scroll
-				item_component = Item(use_function=cast_confuse)
-				item = Object(x, y, '#', 'scroll of confusion', libtcod.light_yellow, item=item_component)
-			elif choice == 'warp':
-				#create a warp scroll
-				item_component = Item (use_function=cast_warp)
-				item = Object(x, y, '#', 'scroll of teleportation', libtcod.light_yellow, item=item_component)
-			elif choice == 'petrify':
-				#create a petrify scroll
-				item_component = Item(use_function=cast_petrify)
-				item = Object(x, y, '#', 'scroll of petrification', libtcod.light_yellow, item=item_component)
-			elif choice == 'antidote':
-				#create an antidote:
-				item_component = Item(use_function=cast_antidote)
-				item = Object(x, y, '!', 'antidote', libtcod.purple, item=item_component)
-			elif choice == 'longsword':
-				#create a longsword
-				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3)
-				item = Object(x, y, '/', 'longsword', libtcod.sky, equipment=equipment_component)
-			elif choice == 'shield':
-				#create a shield
-				equipment_component = Equipment(slot='left hand', defense_bonus=2)
-				item = Object(x, y, '[', 'shield', libtcod.darker_orange, equipment=equipment_component)
-			elif choice == 'lance':
-				#create a lance
-				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d6', power_bonus=3)
-				item = Object(x, y, '/', 'lance', libtcod.sky, equipment=equipment_component)
-			elif choice == 'battleaxe':
-				#create a battleaxe
-				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d10', power_bonus=3)
-				item = Object(x, y, '/', 'battleaxe', libtcod.sky, equipment=equipment_component)
-			elif choice == 'morningstar':
-				#create a morningstar
-				equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='1d8', power_bonus=3)
-				item = Object(x, y, '/', 'morningstar', libtcod.sky, equipment=equipment_component)
-			elif choice == 'Elvish longbow':
-				#create a longbow
-				equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d6', ranged_bonus=3)
-				item = Object(x, y, '/', 'Elvish longbow', libtcod.sky, equipment=equipment_component)
-			elif choice == 'rapier':
-				#create a lance
-				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d4', power_bonus=3)
-				item = Object(x, y, '/', 'rapier', libtcod.sky, equipment=equipment_component)
-			elif choice == 'h_rapier':
-				#create an ornate rapier
-				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d8', power_bonus=5)
-				item = Object(x, y, '/', 'ornate rapier', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'h_sword':
-				#create bastard sword
-				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d8', power_bonus=5)
-				item = Object(x, y, '/', 'bastard sword', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'h_lance':
-				#create a heavy lance
-				equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d10', power_bonus=5)
-				item = Object(x, y, '/', 'heavy lance', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'h_battleaxe':
-				#create a greataxe
-				equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d10', power_bonus=5)
-				item = Object(x, y, '/', 'greataxe', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'h_morningstar':
-				#create a heavy morningstar
-				equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d8', power_bonus=5)
-				item = Object(x, y, '/', 'heavy morningstar', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'h_warhammer':
-				#create a heavy warhammer
-				equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d10', power_bonus=5)
-				item = Object(x, y, '/', 'heavy warhammer', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'h_shortbow':
-				#create a gleamwood shortbow
-				equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d10', ranged_bonus=5)
-				item = Object(x, y, '{', 'gleamwood shortbow', libtcod.yellow, equipment=equipment_component)
-			elif choice == 'w_mmissile':
-				#WAND TEST: wand of magic missile
-				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
-				item = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
-			elif choice == 'w_lightning':
-				#WAND TEST 2: wand of lightning
-				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
-				item = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
-			elif choice == 'w_confusion':
-				#WAND TEST 3: wand of confusion
-				wand_component = Wand(charges=7, max_charges=15, zap_function=cast_confuse)
-				item = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
-			elif choice == 'w_fireball':
-				#WAND TEST 7: wand of fireball
-				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_fireball)
-				item = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
-			elif choice == 'w_death':
-				#WAND TEST 9: wand of death
-				wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
-				item = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
-			elif choice == 'w_warp':
-				#WAND TEST 10: wand of teleportation
-				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
-				item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
-			elif choice == 'w_petrify':
-				#WAND TEST 11: wand of petrification
-				wand_component = Wand(charges=5, max_charges=10, zap_function=cast_petrify)
-				item = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
-			elif choice == 'w_swap':
-				#WAND TEST 12: wand of transposition
-				wand_component = Wand(charges=10, max_charges=20, zap_function=cast_swap)
-				item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
-			elif choice == 'w2_mmissile':
-				#WAND TEST4: fine wand of magic missile
-				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
-				item = Object(0, 0, '/', 'wand of magic missile', libtcod.light_orange, wand=wand_component)
-			elif choice == 'w2_lightning':
-				#WAND TEST 5: fine wand of lightning
-				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_lightning)
-				item = Object(0, 0, '/', 'wand of lightning', libtcod.light_yellow, wand=wand_component)
-			elif choice == 'w2_confusion':
-				#WAND TEST 6: fine wand of confusion
-				wand_component = Wand(charges=15, max_charges=15, zap_function=cast_confuse)
-				item = Object(0, 0, '/', 'wand of confusion', libtcod.light_sky, wand=wand_component)
-			elif choice == 'w2_fireball':
-				#WAND TEST 8: fine wand of fireball
-				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_fireball)
-				item = Object(0, 0, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
-			elif choice == 'w2_death':
-				#WAND TEST 9: ornate wand of death
-				wand_component = Wand(charges=7, max_charges=10, zap_function=cast_death)
-				item = Object(0, 0, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
-			elif choice == 'w2_warp':
-				#WAND TEST 10: fine wand of teleportation
-				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_warp)
-				item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
-			elif choice == 'w2_petrify':
-				#WAND TEST 12: wand of petrification
-				wand_component = Wand(charges=10, max_charges=10, zap_function=cast_petrify)
-				item = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
-			elif choice == 'w2_swap':
-				#WAND TEST 12: wand of transposition
-				wand_component = Wand(charges=20, max_charges=20, zap_function=cast_swap)
-				item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
-				
-			
-			objects.append(item)
-			item.send_to_back() #items appear behind other objects
-			item.always_visible=True #items always visible once explored
+			place_item(x, y, choice)
 
 def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
 	#render a bar (HP, experience, etc.) first calculate width
@@ -2054,6 +2067,8 @@ def archer_death(monster):
 		item = Object(monster.x, monster.y, '^', str(monster.fighter.quiver) + ' arrows', libtcod.sepia, arrows=arrows_component)
 		objects.append(item)
 		item.send_to_back()
+	if damageRoll('1d10') == 1:
+		place_item(monster.x, monster.y, 'orcbow')
 	monster_death(monster)
 	
 def closest_packmate(monster, max_range):
@@ -2593,6 +2608,8 @@ def character_dump():
 			#line = '{}: {}'.format(k,v)
 			#print(line, file=morgue)
 			morgue.write('\t%s: %s\n' % (k.title(), v))
+		morgue.write('\n')
+		morgue.write('\tTotal monster kills: {}\n'.format(sum(kill_count.itervalues())))
 		morgue.write('\n')
 		morgue.write('Player\'s inventory:\n')
 		for item in inventory:
