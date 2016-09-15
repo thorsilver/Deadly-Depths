@@ -656,8 +656,14 @@ class Fighter:
 		else:
 			return 'miss'
 			
-	
-			
+def check_open_cell(x, y):
+	#check for a random open cell neigbouring a target cell, return coordinates
+	d = [(x - 1, y), (x, y + 1), (x + 1, y), (x, y - 1)]
+	random.shuffle(d)
+	for (xx, yy) in d:
+		if map[xx][yy].blocked == True: continue
+		elif map[xx][yy].blocked == False: return xx, yy
+	return None		
 
 class BasicMonster:
 	#AI for a basic monster
@@ -674,6 +680,26 @@ class BasicMonster:
 				type = monster.fighter.damage_type
 				dice = monster.fighter.damage_dice
 				monster.fighter.attack(player, type, dice)
+				
+class SplitterAI:
+	#AI for a monster that can split in two (slow-mover)
+	def take_turn(self):
+		#monster takes turn, only active when within player's FOV
+		monster = self.owner
+		actRoll = damageRoll('1d6')
+		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and actRoll > 4:
+			#move toward player when roll > 4 on d6
+			if monster.distance_to(player) >= 2:
+				monster.move_dijk(player)
+			#attack if close enough, if player is still alive
+			elif player.fighter.hp > 0:
+				type = monster.fighter.damage_type
+				dice = monster.fighter.damage_dice
+				monster.fighter.attack(player, type, dice)
+		elif libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.hp < 10 and actRoll < 2:
+			spotx, spoty = check_open_cell(monster.x, monster.y)
+			spawn_monster(spotx, spoty, monster.name, 0, 0)
+			message('The ' + monster.name.title() + ' has split in two!', libtcod.red)
 				
 class BasicUndead:
 	def take_turn(self):
@@ -1280,6 +1306,16 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num):
 		fighter_component = Fighter(x, y, hp=15, defense=13, power=7, ranged=0, quiver=0, xp=45, damage_type='phys', damage_dice='1d6', immunities=['death', 'mind', 'pierce'], death_function=monster_death)
 		ai_component = BasicUndead()
 		monster = Object(x, y, 'z', 'skeleton warrior', libtcod.white, blocks=True, fighter=fighter_component, ai=ai_component)
+	if choice == 'gelatinous mass':
+		#create a nasty gloopy things
+		fighter_component = Fighter(x, y, hp=15, defense=11, power=3, ranged=0, quiver=0, xp=15, damage_type='water', damage_dice='1d4', immunities=['water', 'mind'], death_function=monster_death)
+		ai_component = SplitterAI()
+		monster = Object(x, y, 'j', 'gelatinous mass', libtcod.light_blue, blocks=True, fighter=fighter_component, ai=ai_component)
+	if choice == 'flaming ooze':
+		#create a flaming goopile
+		fighter_component = Fighter(x, y, hp=20, defense=15, power=5, ranged=0, quiver=0, xp=35, damage_type='fire', damage_dice='1d8', immunities=['fire', 'mind'], death_function=monster_death)
+		ai_component = SplitterAI()
+		monster = Object(x, y, 'j', 'flaming ooze', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'orc':
 		#create an orc
 		fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
@@ -1292,6 +1328,16 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num):
 		fighter_component = Fighter(x, y, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
 		ai_component = ArcherAI()
 		monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
+	elif choice == 'elite orc archer':
+		#create an elite orc archer
+		fighter_component = Fighter(x, y, hp=18, defense=12, power=2, ranged=6, quiver=15, xp=80, damage_type='pierce', damage_dice='2d6', death_function=archer_death)
+		ai_component = ArcherAI()
+		monster = Object(x, y, 'o', 'orc archer', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
+	elif choice == 'devil archer':
+		#create a devil archer
+		fighter_component = Fighter(x, y, hp=30, defense=16, power=4, ranged=9, quiver=15, xp=130, damage_type='fire', damage_dice='2d10', death_function=archer_death)
+		ai_component = ArcherAI()
+		monster = Object(x, y, 'd', 'devil archer', libtcod.orange, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'orc captain':
 		#create an orc captain
 		fighter_component = Fighter(x, y, hp=20, defense=14, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
@@ -1432,6 +1478,10 @@ def place_item(x, y, choice):
 		#create a gleamwood shortbow
 		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d10', ranged_bonus=5)
 		item = Object(x, y, '{', 'gleamwood shortbow', libtcod.yellow, equipment=equipment_component)
+	elif choice == 'demonic firebow':
+		#create a demonic firebow
+		equipment_component = Equipment(slot='bow', damage_type='fire', damage_dice='2d10', ranged_bonus=5)
+		item = Object(x, y, '{', 'demonic firebow', libtcod.red, equipment=equipment_component)
 	elif choice == 'w_mmissile':
 		#WAND TEST: wand of magic missile
 		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
@@ -1510,11 +1560,15 @@ def place_objects(room):
 	monster_chances = {}
 	monster_chances['orc'] = 60 #orc always shows up
 	monster_chances['orc archer'] = 35 #orc archers always show up, for now
+	monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
 	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
 	monster_chances['wolf'] = 60 #wolf always shows up
 	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
 	monster_chances['zombie'] = 20
-	monster_chances['skel_warrior'] = 20
+	monster_chances['skel_warrior'] = 40
+	monster_chances['gelatinous mass'] = 20
+	monster_chances['flaming ooze'] = from_dungeon_level([[15, 10], [20, 12]])
 	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
 	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
 	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
@@ -2067,8 +2121,13 @@ def archer_death(monster):
 		item = Object(monster.x, monster.y, '^', str(monster.fighter.quiver) + ' arrows', libtcod.sepia, arrows=arrows_component)
 		objects.append(item)
 		item.send_to_back()
-	if damageRoll('1d10') == 1:
+	dropRoll = damageRoll('1d10')
+	if dropRoll > 9 and monster.name == 'orc archer':
 		place_item(monster.x, monster.y, 'orcbow')
+	elif dropRoll > 9 and monster.name == 'elite orc archer':
+		place_item(monster.x, monster.y, 'Elvish longbow')
+	elif dropRoll > 9 and monster.name == 'devil archer':
+		place_item(monster.x, monster.y, 'demonic firebow')
 	monster_death(monster)
 	
 def closest_packmate(monster, max_range):
