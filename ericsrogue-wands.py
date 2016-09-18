@@ -390,7 +390,7 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, resistances=[], 
+	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory=[], resistances=[], 
 		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
@@ -407,6 +407,7 @@ class Fighter:
 		self.damage_dice = damage_dice
 		self.turn_count = turn_count
 		self.poison_tick = poison_tick
+		self.inventory = inventory
 		self.resistances = resistances
 		self.immunities = immunities
 		self.weaknesses = weaknesses
@@ -825,10 +826,10 @@ class Item:
 	def pick_up(self):
 		arrows = self.owner.arrows
 		#add to player's inventory and remove from the map
-		if len(inventory) >= 26 and not arrows:
+		if len(player.fighter.inventory) >= 26 and not arrows:
 			message('Your inventory is full, cannot pick up ' + self.owner.name.title() + '.', libtcod.red)
 		elif not arrows:
-			inventory.append(self.owner)
+			player.fighter.inventory.append(self.owner)
 			objects.remove(self.owner)
 			message('You picked up a ' + self.owner.name.title() + '!', libtcod.green)
 		#special case: if item is Equipment, automatically equip if slot is open
@@ -862,7 +863,7 @@ class Item:
 		#special case: if object is Food, add Nutrition to user's Hunger
 		if self.owner.food and player.fighter.hunger < 500:
 			self.owner.food.eat(self.owner.food.nutrition)
-			inventory.remove(self.owner)
+			player.fighter.inventory.remove(self.owner)
 			return
 		elif self.owner.food and player.fighter.hunger == 500:
 			message('You are already full!', libtcod.green)
@@ -873,7 +874,7 @@ class Item:
 			message('The ' + self.owner.name.title() + ' cannot be used.')
 		else:
 			if self.use_function() != 'cancelled':
-				inventory.remove(self.owner) #destroy after use, unless cancelled
+				player.fighter.inventory.remove(self.owner) #destroy after use, unless cancelled
 
 	def drop(self):
 		#special case: if Equipment, dequip before dropping
@@ -882,7 +883,7 @@ class Item:
 		
 		#add to the map and remove from the player's inventory
 		objects.append(self.owner)
-		inventory.remove(self.owner)
+		player.fighter.inventory.remove(self.owner)
 		self.owner.x = player.x
 		self.owner.y = player.y
 		message('You dropped a ' + self.owner.name.title() + '.', libtcod.yellow)
@@ -989,7 +990,7 @@ def cast_magic_missile():
 	
 
 def get_equipped_in_slot(slot): #returns equipment in slot, None if empty
-	for obj in inventory:
+	for obj in player.fighter.inventory:
 		if obj.equipment and obj.equipment.slot == slot and obj.equipment.is_equipped:
 			return obj.equipment
 	return None
@@ -997,7 +998,7 @@ def get_equipped_in_slot(slot): #returns equipment in slot, None if empty
 def get_all_equipped(obj): #gets a list of equipped items
 	if obj == player:
 		equipped_list = []
-		for item in inventory:
+		for item in player.fighter.inventory:
 			if item.equipment and item.equipment.is_equipped:
 				equipped_list.append(item.equipment)
 		return equipped_list
@@ -1006,31 +1007,31 @@ def get_all_equipped(obj): #gets a list of equipped items
 		
 def get_weapon_damage(): #retrieve weapon damage from equipped weapon
 	weapon = get_equipped_in_slot('right hand')
-	if weapon.is_equipped:
+	if weapon is not None and weapon.is_equipped:
 		return weapon.damage_dice
 	else:
 		return '1d4' #default unarmed damage
 	
 def get_damage_type(): #retrieve weapon damage type from equipped weapon
 	weapon = get_equipped_in_slot('right hand')
-	if weapon.is_equipped:
+	if weapon is not None and weapon.is_equipped:
 		return weapon.damage_type
 	else:
 		return 'phys'
 		
 def get_bow_damage(): #retrieve damage dice value from bow slot
 	bow = get_equipped_in_slot('bow')
-	if bow.is_equipped:
+	if bow is not None and bow.is_equipped:
 		return bow.damage_dice
 	else:
 		return None
 		
 def get_bow_type(): #retrieve damage type of equipped missile weapon
 	bow = get_equipped_in_slot('bow')
-	if bow.is_equipped:
-		return bow.damage_dice
+	if bow is not None and bow.is_equipped:
+		return bow.damage_type
 	else:
-		return None
+		return 'phys'
 	
 def is_blocked(x, y):
 	#test the map tile first
@@ -1930,11 +1931,11 @@ def menu(header, options, width):
 
 def inventory_menu(header):
 	#show a menu with each inventory item as an option
-	if len(inventory) == 0:
+	if len(player.fighter.inventory) == 0:
 		options = ['Inventory is empty.']
 	else:
 		options = []
-		for item in inventory:
+		for item in player.fighter.inventory:
 			text = item.name
 			#show additional info, in case it's equipped
 			if item.equipment and item.equipment.is_equipped:
@@ -1944,14 +1945,14 @@ def inventory_menu(header):
 	index = menu(header, options, INVENTORY_WIDTH)
 
 	#if an item was chosen, return it
-	if index is None or len(inventory) == 0: return None
-	return inventory[index].item
+	if index is None or len(player.fighter.inventory) == 0: return None
+	return player.fighter.inventory[index].item
 
 def wand_menu():	
 	#make a wand menu, let player use one if available
 	wand_list = []
 	menu_options = []
-	for item in inventory:
+	for item in player.fighter.inventory:
 		if item.wand is not None:
 			wand_list.append(item)
 	if len(wand_list) == 0:
@@ -2235,7 +2236,7 @@ def cast_recharge():
 	#recharge a selected wand
 	wand_list = []
 	menu_options = []
-	for item in inventory:
+	for item in player.fighter.inventory:
 		if item.wand is not None:
 			wand_list.append(item)
 	if len(wand_list) == 0:
@@ -2483,7 +2484,7 @@ def new_game(choice):
 	initialize_fov()
 	
 	game_state = 'playing'
-	inventory = []
+	#inventory = []
 	kill_count = {}
 
 	#create the list of game messages and their colors
@@ -2498,14 +2499,14 @@ def new_game(choice):
 		#starting equipment: a short sword
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel short sword', libtcod.sky, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#starting equipment: wooden buckler shield
 		equipment_component = Equipment(slot='left hand', damage_type='', damage_dice='', power_bonus=0, defense_bonus=2, ranged_bonus=0)
 		obj = Object(0, 0, '(', 'wooden buckler shield', libtcod.brass, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 	elif choice == 1:
@@ -2513,14 +2514,14 @@ def new_game(choice):
 		#starting equipment: a warhammer
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d6', power_bonus=1, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel warhammer', libtcod.sky, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#starting equipment: a steel tower shield
 		equipment_component = Equipment(slot='left hand', damage_type='', damage_dice='', power_bonus=0, defense_bonus=3, ranged_bonus=0)
 		obj = Object(0, 0, '{', 'Elvish short bow', libtcod.brass, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 	elif choice == 2:
@@ -2528,14 +2529,14 @@ def new_game(choice):
 		#starting equipment: a dagger
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d6', power_bonus=2, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel dagger', libtcod.sky, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#starting equipment: a fine Elvish shortbow
 		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='1d6', power_bonus=0, ranged_bonus=4)
 		obj = Object(0, 0, '{', 'Elvish short bow', libtcod.brass, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
@@ -2544,43 +2545,43 @@ def new_game(choice):
 		#starting equipment: a staff
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d4', power_bonus=2, ranged_bonus=0)
 		obj = Object(0, 0, '|', 'old wooden staff', libtcod.sepia, equipment=equipment_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
 		
 		#WAND TEST: wand of magic missile
 		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
 		obj = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		obj.always_visible = True
 		
 		#WAND TEST 11: wand of petrification
 		wand_component = Wand(charges=5, max_charges=20, zap_function=cast_petrify)
 		obj = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		obj.always_visible = True
 		
 		#wand test 12: wand of transposition
 		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_swap)
 		obj = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		obj.always_visible = True
 		
 		#recharge potion test
 		#create a recharge potion
 		item_component = Item(use_function=cast_recharge)
 		obj = Object(0, 0, '!', 'recharge potion', libtcod.light_blue, item=item_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		
 		#WAND TEST 7: wand of fireball
 		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_fireball)
 		obj = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		
 		#WAND TEST 9: wand of death
 		wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
 		obj = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		
 		# #WAND TEST 10: wand of teleportation
 		# wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
@@ -2591,7 +2592,7 @@ def new_game(choice):
 		#WAND TEST 2: wand of lightning
 		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
 		obj = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		obj.always_visible = True
 		
 		# #WAND TEST 3: wand of confusion
@@ -2603,7 +2604,7 @@ def new_game(choice):
 	for rations in range(3):
 		food_component = Food('normal', 500)
 		obj = Object(0, 0, '%', 'ration pack', libtcod.sepia, food=food_component)
-		inventory.append(obj)
+		player.fighter.inventory.append(obj)
 		
 
 
@@ -2627,7 +2628,7 @@ def save_game():
 	file['map'] = map
 	file['objects'] = objects
 	file['player_index'] = objects.index(player) #location of player in objects list
-	file['inventory'] = inventory
+	file['inventory'] = player.fighter.inventory
 	file['kill_count'] = kill_count
 	file['game_msgs'] = game_msgs
 	file['game_state'] = game_state
@@ -2643,7 +2644,7 @@ def load_game():
 	map = file['map']
 	objects = file['objects']
 	player = objects[file['player_index']] #get index of player and access it
-	inventory = file['inventory']
+	player.fighter.inventory = file['inventory']
 	kill_count = file['kill_count']
 	game_msgs = file['game_msgs']
 	game_state = file['game_state']
@@ -2671,7 +2672,7 @@ def character_dump():
 		morgue.write('\tTotal monster kills: {}\n'.format(sum(kill_count.itervalues())))
 		morgue.write('\n')
 		morgue.write('Player\'s inventory:\n')
-		for item in inventory:
+		for item in player.fighter.inventory:
 			morgue.write('\t%s\n' % (item.name.title()))
 		morgue.close()
 			
