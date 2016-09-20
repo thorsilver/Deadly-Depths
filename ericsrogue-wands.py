@@ -1031,7 +1031,7 @@ def get_bow_type(): #retrieve damage type of equipped missile weapon
 	if bow is not None and bow.is_equipped:
 		return bow.damage_type
 	else:
-		return 'phys'
+		return 'pierce'
 	
 def is_blocked(x, y):
 	#test the map tile first
@@ -1317,6 +1317,16 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num):
 		fighter_component = Fighter(x, y, hp=20, defense=15, power=5, ranged=0, quiver=0, xp=35, damage_type='fire', damage_dice='1d8', immunities=['fire', 'mind'], death_function=monster_death)
 		ai_component = SplitterAI()
 		monster = Object(x, y, 'j', 'flaming ooze', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
+	if choice == 'sparking goop':
+		#create a thunderous goo
+		fighter_component = Fighter(x, y, hp=25, defense=17, power=7, ranged=0, quiver=0, xp=50, damage_type='thunder', damage_dice='1d10', immunities=['thunder', 'mind'], death_function=monster_death)
+		ai_component = SplitterAI()
+		monster = Object(x, y, 'j', 'sparking goop', libtcod.yellow, blocks=True, fighter=fighter_component, ai=ai_component)
+	if choice == 'toxic slime':
+		#create a gross sentient poison blob
+		fighter_component = Fighter(x, y, hp=30, defense=19, power=9, ranged=0, quiver=0, xp=75, damage_type='poison', damage_dice='1d12', immunities=['poison', 'mind'], death_function=monster_death)
+		ai_component = SplitterAI()
+		monster = Object(x, y, 'j', 'toxic slime', libtcod.violet, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'orc':
 		#create an orc
 		fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
@@ -1569,7 +1579,9 @@ def place_objects(room):
 	monster_chances['zombie'] = 20
 	monster_chances['skel_warrior'] = 40
 	monster_chances['gelatinous mass'] = 20
-	monster_chances['flaming ooze'] = from_dungeon_level([[15, 10], [20, 12]])
+	monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
+	monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
 	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
 	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
 	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
