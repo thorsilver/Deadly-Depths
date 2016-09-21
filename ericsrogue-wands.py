@@ -82,7 +82,7 @@ color_light_wall = libtcod.Color(130, 110, 50)
 color_dark_ground = libtcod.Color(50, 50, 150)
 color_light_ground = libtcod.Color(200, 180, 50)
  
-LIMIT_FPS = 20  #20 frames-per-second maximum
+LIMIT_FPS = 60  #20 frames-per-second maximum
 
 # class Diceroll:
 	# #defining dice rolls for damage calculations
@@ -135,6 +135,33 @@ class Rect:
 	def intersect(self, other):
 		#returns true if this rectangle intersects with another one
 		return (self.x1 <= other.x2 and self.x2 >= other.x1 and self.y1 <= other.y2 and self.y2 >= other.y1)
+		
+class Ticker:
+	#this is the timer object
+	#allows for scheduling of turns for monsters, effects, etc.
+	def __init__(self):
+		self.ticks = 0
+		self.schedule = {}
+		self.last_turn = 'monster'
+		
+	def schedule_turn(self, interval, obj):
+		self.schedule.setdefault(self.ticks + interval, []).append(obj)
+		
+	def next_turn(self):
+		things_to_do = self.schedule.pop(self.ticks, [])
+		for obj in things_to_do:
+			if obj == player:# and self.last_turn != 'player':
+				#libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS|libtcod.EVENT_MOUSE,key,mouse)
+				player_action = handle_keys()
+				if player_action == 'exit':
+					return 'exit'
+				if player_action != 'didnt-take-turn':
+					self.last_turn = 'player'
+					self.ticks += 1
+				player.fighter.ticker.schedule_turn(player.fighter.speed, player)
+			elif obj != player and obj.ai and obj.ai is not None:
+				obj.ai.take_turn()
+				self.last_turn = 'monster'
 
 class Object:
 	#this is a generic object
@@ -390,10 +417,12 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory=[], resistances=[], 
+	def __init__(self, x, y, ticker, speed, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory=[], resistances=[], 
 		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
+		self.ticker = ticker
+		self.speed = speed
 		self.base_max_hp = hp
 		self.hp = hp
 		self.base_defense = defense
@@ -665,6 +694,22 @@ def check_open_cell(x, y):
 		if map[xx][yy].blocked == True: continue
 		elif map[xx][yy].blocked == False: return xx, yy
 	return None		
+	
+class ClockGolem:
+	#AI for ticker testing
+	def take_turn(self):
+		monster = self.owner
+		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
+			#move toward player if far away
+			if monster.distance_to(player) >= 2:
+				monster.move_dijk(player)
+
+			#attack if close enough, if player is still alive
+			elif player.fighter.hp > 0 and 0 <= monster.distance_to(player) < 2:
+				type = monster.fighter.damage_type
+				dice = monster.fighter.damage_dice
+				monster.fighter.attack(player, type, dice)
+		monster.fighter.ticker.schedule_turn(monster.fighter.speed, monster)
 
 class BasicMonster:
 	#AI for a basic monster
@@ -1296,7 +1341,15 @@ def hline_right(map, x, y):
 #END BSP STUFF
 ###############################
 
-def spawn_monster(x, y, choice, mutation_roll, mutation_num):
+global clock
+
+def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
+	if choice == 'clock golem':
+		#create a clock golem to test ticker
+		fighter_component = Fighter(x, y, clock, speed=8, hp=10, defense=11,power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+		ai_component = ClockGolem()
+		monster = Object(x, y, 'c', 'clock golem', libtcod.gold, blocks=True, fighter=fighter_component, ai=ai_component)
+		monster.fighter.ticker.schedule_turn(monster.fighter.speed, monster)
 	if choice == 'zombie':
 		#create a basic zombie
 		fighter_component = Fighter(x, y, hp=10, defense=11, power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', immunities=['death', 'mind'], death_function=monster_death)
@@ -1562,6 +1615,8 @@ def place_item(x, y, choice):
 	item.always_visible=True #items always visible once explored
 
 def place_objects(room):
+	global clock
+	
 	#first we decide the chance of each monster or item showing up
 	
 	#max monsters per room
@@ -1569,22 +1624,23 @@ def place_objects(room):
 
 	#chances for each monster
 	monster_chances = {}
-	monster_chances['orc'] = 60 #orc always shows up
-	monster_chances['orc archer'] = 35 #orc archers always show up, for now
-	monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
-	monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
-	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
-	monster_chances['wolf'] = 60 #wolf always shows up
-	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
-	monster_chances['zombie'] = 20
-	monster_chances['skel_warrior'] = 40
-	monster_chances['gelatinous mass'] = 20
-	monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
-	monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
-	monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
-	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
-	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
-	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
+	monster_chances['clock golem'] = 100 #testing testing 1 2 3
+	# monster_chances['orc'] = 60 #orc always shows up
+	# monster_chances['orc archer'] = 35 #orc archers always show up, for now
+	# monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
+	# monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
+	# monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
+	# monster_chances['wolf'] = 60 #wolf always shows up
+	# monster_chances['rattlesnake'] = 20 #snake always shows up, for now
+	# monster_chances['zombie'] = 20
+	# monster_chances['skel_warrior'] = 40
+	# monster_chances['gelatinous mass'] = 20
+	# monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
+	# monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
+	# monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
+	# monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+	# monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
+	# monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
 
 	#max items per room
 	max_items = from_dungeon_level([[1, 1], [2, 4]])
@@ -1647,7 +1703,7 @@ def place_objects(room):
 				mutation_num = mutation_roll - 6
 				if mutation_num > 2:
 					mutation_num = 2
-			spawn_monster(x, y, choice, mutation_roll, mutation_num)
+			spawn_monster(x, y, choice, mutation_roll, mutation_num, clock)
 
 	#choose random number of items
 	num_items = libtcod.random_get_int(0, 0, max_items)
@@ -1928,6 +1984,7 @@ def menu(header, options, width):
 	y = SCREEN_HEIGHT/2 - height/2
 	libtcod.console_blit(window, 0, 0, width, height, 0, x, y, 1.0, 0.7)
 
+	time.sleep(0.3)
 	#present the root console to the player and wait for a key-press
 	libtcod.console_flush()
 	key = libtcod.console_wait_for_keypress(True)
@@ -1988,7 +2045,7 @@ def handle_keys():
 	global keys
  
     #key = libtcod.console_check_for_keypress()  #real-time
-	#key = libtcod.console_wait_for_keypress(True)  #turn-based
+	key = libtcod.console_wait_for_keypress(True)  #turn-based
 
 	if key.vk == libtcod.KEY_ENTER and key.lalt:
         #Alt+Enter: toggle fullscreen
@@ -2449,9 +2506,11 @@ def next_level():
 
 	message('After a rare moment of peace, you descend deeper into the labyrinth...', libtcod.red)
 	dungeon_level += 1
-	make_bsp()
-	#make_map() #create a new level
+	clock.schedule = {key:val for key, val in clock.schedule.items() if val == 'player'}
+	#make_bsp()
+	make_map() #create a new level
 	initialize_fov()
+
 	
 def load_customfont(): #TILES VERSION
 	#the index of the first custom tile in the file
@@ -2463,13 +2522,15 @@ def load_customfont(): #TILES VERSION
 		a += 32
 
 def new_game(choice):
-	global player, inventory, game_msgs, kill_count, game_state, dungeon_level
+	global player, inventory, game_msgs, kill_count, game_state, dungeon_level, clock
+	clock = Ticker()
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, 
+		fighter_component = Fighter(0, 0, clock, speed=10, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
+		player.fighter.ticker.schedule_turn(player.fighter.speed, player)
 	elif choice == 1:
 		#create player object, Knight class
 		fighter_component = Fighter(0, 0, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, 
@@ -2639,6 +2700,7 @@ def save_game():
 	file = shelve.open('savegame', 'n')
 	file['map'] = map
 	file['objects'] = objects
+	file['clock'] = clock
 	file['player_index'] = objects.index(player) #location of player in objects list
 	file['inventory'] = player.fighter.inventory
 	file['kill_count'] = kill_count
@@ -2655,6 +2717,7 @@ def load_game():
 	file = shelve.open('savegame', 'r')
 	map = file['map']
 	objects = file['objects']
+	clock = file['clock']
 	player = objects[file['player_index']] #get index of player and access it
 	player.fighter.inventory = file['inventory']
 	kill_count = file['kill_count']
@@ -2665,6 +2728,8 @@ def load_game():
 	file.close()
 
 	initialize_fov()
+	game_state = 'playing'
+	play_game()
 
 def character_dump():
 	global dungeon_level_name
@@ -2690,12 +2755,14 @@ def character_dump():
 			
 
 def play_game():
-	global key, mouse
+	global key, mouse, clock
 
-	player_action = None
+	#player_action = None
 
 	mouse = libtcod.Mouse()
 	key = libtcod.Key()
+	
+	#clock = Ticker()
 	 
 	while not libtcod.console_is_window_closed():
 		#render the screen
@@ -2712,16 +2779,24 @@ def play_game():
 			object.clear()
 
 		#handle keys and exit if needed
-		player_action = handle_keys()
-		if player_action == 'exit':
-			save_game()
-			break
+		#player_action = handle_keys()
+		# if player_action == 'exit':
+			# save_game()
+			# break
+		clock.next_turn()
 
 		#let monsters take their turn
-		if game_state == 'playing' and player_action != 'didnt-take-turn':
-			for object in objects:
-				if object.ai:
-					object.ai.take_turn()
+		if game_state == 'playing':# and clock.last_turn == 'player':
+			clock.ticks += 1
+			#print(clock.ticks)
+			#print(clock.schedule)
+			turn = clock.next_turn()
+			if turn == 'exit':
+				save_game()
+				break
+			# for object in objects:
+				# if object.ai:
+					# object.ai.take_turn()
 					
 def graphics_menu():
 	libtcod.console_clear(con)
