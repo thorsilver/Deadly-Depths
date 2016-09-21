@@ -149,8 +149,11 @@ class Ticker:
 		
 	def next_turn(self):
 		things_to_do = self.schedule.pop(self.ticks, [])
+		#print(self.ticks)
+		#print(things_to_do)
 		for obj in things_to_do:
 			if obj == player:# and self.last_turn != 'player':
+				#print('Player takes a turn!')
 				#libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS|libtcod.EVENT_MOUSE,key,mouse)
 				player_action = handle_keys()
 				if player_action == 'exit':
@@ -158,9 +161,10 @@ class Ticker:
 				if player_action != 'didnt-take-turn':
 					self.last_turn = 'player'
 					self.ticks += 1
-				player.fighter.ticker.schedule_turn(player.fighter.speed, player)
+				self.schedule_turn(player.fighter.speed, player)
 			elif obj != player and obj.ai and obj.ai is not None:
-				obj.ai.take_turn()
+				#print(obj.name + ' takes a turn!')
+				obj.ai.take_turn(clock)
 				self.last_turn = 'monster'
 
 class Object:
@@ -417,11 +421,10 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, ticker, speed, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory=[], resistances=[], 
+	def __init__(self, x, y, speed, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory=[], resistances=[], 
 		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
-		self.ticker = ticker
 		self.speed = speed
 		self.base_max_hp = hp
 		self.hp = hp
@@ -697,8 +700,9 @@ def check_open_cell(x, y):
 	
 class ClockGolem:
 	#AI for ticker testing
-	def take_turn(self):
+	def take_turn(self, clock):
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
@@ -709,13 +713,14 @@ class ClockGolem:
 				type = monster.fighter.damage_type
 				dice = monster.fighter.damage_dice
 				monster.fighter.attack(player, type, dice)
-		monster.fighter.ticker.schedule_turn(monster.fighter.speed, monster)
+		
 
 class BasicMonster:
 	#AI for a basic monster
-	def take_turn(self):
+	def take_turn(self, clock):
 		#basic monster takes its turn. If you can see it, it can see you
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
@@ -729,9 +734,10 @@ class BasicMonster:
 				
 class SplitterAI:
 	#AI for a monster that can split in two (slow-mover)
-	def take_turn(self):
+	def take_turn(self, clock):
 		#monster takes turn, only active when within player's FOV
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		actRoll = damageRoll('1d6')
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and actRoll > 4:
 			#move toward player when roll > 4 on d6
@@ -744,13 +750,14 @@ class SplitterAI:
 				monster.fighter.attack(player, type, dice)
 		elif libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.hp < 10 and actRoll < 2:
 			spotx, spoty = check_open_cell(monster.x, monster.y)
-			spawn_monster(spotx, spoty, monster.name, 0, 0)
+			spawn_monster(spotx, spoty, monster.name, 0, 0, clock)
 			message('The ' + monster.name.title() + ' has split in two!', libtcod.red)
 				
 class BasicUndead:
-	def take_turn(self):
+	def take_turn(self, clock):
 		#AI for a basic undead monster -- mindlessly advance, 1/4 of the time too stupid to act
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and damageRoll('1d4') > 1:
 			if monster.distance_to(player) >= 2:
 				monster.move_dijk(player)
@@ -761,8 +768,9 @@ class BasicUndead:
 			
 class WolfAI:
 	#AI for a wolf - they can attack from outside FOV, and howl for extra power when injured!
-	def take_turn(self):
+	def take_turn(self, clock):
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 20:
@@ -784,8 +792,9 @@ class WolfAI:
 				
 class PoisonSpitterAI:
 	#AI for poisonspitters -- they get to range and chuck poison goo, chance to hit based on Agility
-	def take_turn(self):
+	def take_turn(self, clock):
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 15 and monster.distance_to(player) > 5:
@@ -808,8 +817,9 @@ class PoisonSpitterAI:
 			
 class ArcherAI:
 	#AI for archers - they get to range and fire arrows
-	def take_turn(self):
+	def take_turn(self, clock):
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		range = monster.distance_to(player)
@@ -831,8 +841,9 @@ class ArcherAI:
 			
 class AngryWolf:
 	#AI for wolf awoken by a packmate's howl -- they'll charge in from up to 25 tiles away!
-	def take_turn(self):
+	def take_turn(self, clock):
 		monster = self.owner
+		clock.schedule_turn(monster.fighter.speed, monster)
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		monster.fighter.enraged = True
@@ -854,7 +865,8 @@ class ConfusedMonster:
 		self.old_ai = old_ai
 		self.num_turns = num_turns
 
-	def take_turn(self):
+	def take_turn(self, clock):
+		clock.schedule_turn(self.owner.fighter.speed, self.owner)
 		if self.num_turns > 0: #still confused?
 			#move in a random direction, decrease number of confused turns remaining
 			self.owner.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
@@ -1341,108 +1353,107 @@ def hline_right(map, x, y):
 #END BSP STUFF
 ###############################
 
-global clock
-
 def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
+	#global clock
 	if choice == 'clock golem':
 		#create a clock golem to test ticker
-		fighter_component = Fighter(x, y, clock, speed=8, hp=10, defense=11,power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=8, hp=10, defense=11,power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 		ai_component = ClockGolem()
 		monster = Object(x, y, 'c', 'clock golem', libtcod.gold, blocks=True, fighter=fighter_component, ai=ai_component)
-		monster.fighter.ticker.schedule_turn(monster.fighter.speed, monster)
 	if choice == 'zombie':
 		#create a basic zombie
-		fighter_component = Fighter(x, y, hp=10, defense=11, power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', immunities=['death', 'mind'], death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=15, hp=10, defense=11, power=5, ranged=0, quiver=0, xp=20, damage_type='phys', damage_dice='1d4', immunities=['death', 'mind'], death_function=monster_death)
 		ai_component = BasicUndead()
 		monster = Object(x, y, 'z', 'zombie', libtcod.dark_purple, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'skel_warrior':
 		#create a basic skeleton
-		fighter_component = Fighter(x, y, hp=15, defense=13, power=7, ranged=0, quiver=0, xp=45, damage_type='phys', damage_dice='1d6', immunities=['death', 'mind', 'pierce'], death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=13, hp=15, defense=13, power=7, ranged=0, quiver=0, xp=45, damage_type='phys', damage_dice='1d6', immunities=['death', 'mind', 'pierce'], death_function=monster_death)
 		ai_component = BasicUndead()
 		monster = Object(x, y, 'z', 'skeleton warrior', libtcod.white, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'gelatinous mass':
 		#create a nasty gloopy things
-		fighter_component = Fighter(x, y, hp=15, defense=11, power=3, ranged=0, quiver=0, xp=15, damage_type='water', damage_dice='1d4', immunities=['water', 'mind'], death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=20, hp=15, defense=11, power=3, ranged=0, quiver=0, xp=15, damage_type='water', damage_dice='1d4', immunities=['water', 'mind'], death_function=monster_death)
 		ai_component = SplitterAI()
 		monster = Object(x, y, 'j', 'gelatinous mass', libtcod.light_blue, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'flaming ooze':
 		#create a flaming goopile
-		fighter_component = Fighter(x, y, hp=20, defense=15, power=5, ranged=0, quiver=0, xp=35, damage_type='fire', damage_dice='1d8', immunities=['fire', 'mind'], death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=20, hp=20, defense=15, power=5, ranged=0, quiver=0, xp=35, damage_type='fire', damage_dice='1d8', immunities=['fire', 'mind'], death_function=monster_death)
 		ai_component = SplitterAI()
 		monster = Object(x, y, 'j', 'flaming ooze', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'sparking goop':
 		#create a thunderous goo
-		fighter_component = Fighter(x, y, hp=25, defense=17, power=7, ranged=0, quiver=0, xp=50, damage_type='thunder', damage_dice='1d10', immunities=['thunder', 'mind'], death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=20, hp=25, defense=17, power=7, ranged=0, quiver=0, xp=50, damage_type='thunder', damage_dice='1d10', immunities=['thunder', 'mind'], death_function=monster_death)
 		ai_component = SplitterAI()
 		monster = Object(x, y, 'j', 'sparking goop', libtcod.yellow, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'toxic slime':
 		#create a gross sentient poison blob
-		fighter_component = Fighter(x, y, hp=30, defense=19, power=9, ranged=0, quiver=0, xp=75, damage_type='poison', damage_dice='1d12', immunities=['poison', 'mind'], death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=20, hp=30, defense=19, power=9, ranged=0, quiver=0, xp=75, damage_type='poison', damage_dice='1d12', immunities=['poison', 'mind'], death_function=monster_death)
 		ai_component = SplitterAI()
 		monster = Object(x, y, 'j', 'toxic slime', libtcod.violet, blocks=True, fighter=fighter_component, ai=ai_component)
 	if choice == 'orc':
 		#create an orc
-		fighter_component = Fighter(x, y, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=10, hp=10, defense=11, power=4, ranged=0, quiver=0, xp=35, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 		ai_component = BasicMonster()
 		monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks=True, fighter=fighter_component, ai=ai_component)
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 	elif choice == 'orc archer':
 		#create an orc archer
-		fighter_component = Fighter(x, y, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
+		fighter_component = Fighter(x, y, speed=8, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
 		ai_component = ArcherAI()
 		monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'elite orc archer':
 		#create an elite orc archer
-		fighter_component = Fighter(x, y, hp=18, defense=12, power=2, ranged=6, quiver=15, xp=80, damage_type='pierce', damage_dice='2d6', death_function=archer_death)
+		fighter_component = Fighter(x, y, speed=7, hp=18, defense=12, power=2, ranged=6, quiver=15, xp=80, damage_type='pierce', damage_dice='2d6', death_function=archer_death)
 		ai_component = ArcherAI()
 		monster = Object(x, y, 'o', 'orc archer', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'devil archer':
 		#create a devil archer
-		fighter_component = Fighter(x, y, hp=30, defense=16, power=4, ranged=9, quiver=15, xp=130, damage_type='fire', damage_dice='2d10', death_function=archer_death)
+		fighter_component = Fighter(x, y, speed=6, hp=30, defense=16, power=4, ranged=9, quiver=15, xp=130, damage_type='fire', damage_dice='2d10', death_function=archer_death)
 		ai_component = ArcherAI()
 		monster = Object(x, y, 'd', 'devil archer', libtcod.orange, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'orc captain':
 		#create an orc captain
-		fighter_component = Fighter(x, y, hp=20, defense=14, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=12, hp=20, defense=14, power=6, ranged=0, quiver=0, xp=75, damage_type='phys', damage_dice='2d4', death_function=monster_death)
 		ai_component = BasicMonster()
 		monster = Object(x, y, 'O', 'orc captain', libtcod.dark_red, blocks=True, fighter=fighter_component, ai=ai_component)
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 	elif choice == 'troll':
 		#create a troll
-		fighter_component = Fighter(x, y, hp=30, defense=15, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=14, hp=30, defense=15, power=8, ranged=0, quiver=0, xp=100, damage_type='phys', damage_dice='2d6', death_function=monster_death)
 		ai_component = BasicMonster()
 		monster = Object(x, y, 'T', 'troll', libtcod.darker_green, blocks=True, fighter=fighter_component, ai=ai_component)
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 	elif choice == 'wolf':
 		#create a wolf
-		fighter_component = Fighter(x, y, hp=8, defense=9, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=7, hp=8, defense=9, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 		ai_component = WolfAI()
 		monster = Object(x, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
 		if not is_blocked(x+1,y):
-			fighter_component = Fighter(x, y, hp=10, defense=0, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
+			fighter_component = Fighter(x, y, speed=7, hp=8, defense=9, power=2, ranged=0, quiver=0, xp=10, damage_type='phys', damage_dice='1d4', death_function=monster_death)
 			ai_component = WolfAI()
 			monster = Object(x+1, y, 'w', 'wolf', libtcod.grey, blocks=True, fighter=fighter_component, ai=ai_component)
 	
 	elif choice == 'rattlesnake':
-		fighter_component = Fighter(x, y, hp=8, defense=7, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=9, hp=8, defense=7, power=3, ranged=3, xp=15, quiver=0, damage_type='poison', damage_dice='1d6', death_function=monster_death)
 		ai_component = PoisonSpitterAI()
 		monster = Object(x, y, 'S', 'rattlesnake', libtcod.light_sepia, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'naga hatchling':
-		fighter_component = Fighter(x, y, hp=16, defense=14, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=11, hp=16, defense=14, power=5, ranged=5, xp=40, quiver=0, damage_type='poison', damage_dice='2d4', death_function=monster_death)
 		ai_component = PoisonSpitterAI()
 		monster = Object(x, y, 'n', 'naga hatchling', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 	elif choice == 'naga':
-		fighter_component = Fighter(x, y, hp=35, defense=16, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
+		fighter_component = Fighter(x, y, speed=12, hp=35, defense=16, power=7, ranged=6, xp=75, quiver=0, damage_type='poison', damage_dice='2d6', death_function=monster_death)
 		ai_component = PoisonSpitterAI()
 		monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 			
+	clock.schedule_turn(monster.fighter.speed, monster)	
 	objects.append(monster)
 	
 def place_item(x, y, choice):
@@ -1624,23 +1635,23 @@ def place_objects(room):
 
 	#chances for each monster
 	monster_chances = {}
-	monster_chances['clock golem'] = 100 #testing testing 1 2 3
-	# monster_chances['orc'] = 60 #orc always shows up
-	# monster_chances['orc archer'] = 35 #orc archers always show up, for now
-	# monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
-	# monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
-	# monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
-	# monster_chances['wolf'] = 60 #wolf always shows up
-	# monster_chances['rattlesnake'] = 20 #snake always shows up, for now
-	# monster_chances['zombie'] = 20
-	# monster_chances['skel_warrior'] = 40
-	# monster_chances['gelatinous mass'] = 20
-	# monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
-	# monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
-	# monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
-	# monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
-	# monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
-	# monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
+	monster_chances['clock golem'] = 0 #testing testing 1 2 3
+	monster_chances['orc'] = 60 #orc always shows up
+	monster_chances['orc archer'] = 35 #orc archers always show up, for now
+	monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
+	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
+	monster_chances['wolf'] = 60 #wolf always shows up
+	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
+	monster_chances['zombie'] = 20
+	monster_chances['skel_warrior'] = 40
+	monster_chances['gelatinous mass'] = 20
+	monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
+	monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
+	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
+	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
 
 	#max items per room
 	max_items = from_dungeon_level([[1, 1], [2, 4]])
@@ -2121,7 +2132,7 @@ def handle_keys():
 					'\nExperience: ' + str(player.fighter.xp) + '\nExperience to Level Up: ' + 
 					str(level_up_xp) + '\n\nMaximum HP: ' + str(player.fighter.max_hp) + 
 					'\nAttack: ' + str(player.fighter.power) + '\nRanged Attack: ' + str(player.fighter.ranged) + '\nDefense: ' + str(player.fighter.defense) + 
-					'\nQuiver: ' + str(player.fighter.quiver), CHARACTER_SCREEN_WIDTH)
+					'\nSpeed: ' + str(player.fighter.speed) + '\nQuiver: ' + str(player.fighter.quiver), CHARACTER_SCREEN_WIDTH)
 			return 'didnt-take-turn'
 
 def get_names_under_mouse():
@@ -2507,6 +2518,11 @@ def next_level():
 	message('After a rare moment of peace, you descend deeper into the labyrinth...', libtcod.red)
 	dungeon_level += 1
 	clock.schedule = {key:val for key, val in clock.schedule.items() if val == 'player'}
+	while objects: objects.pop()
+	objects.append(player)
+	print(objects)
+	print(clock.schedule)
+	#print(clock.schedule)
 	#make_bsp()
 	make_map() #create a new level
 	initialize_fov()
@@ -2526,29 +2542,32 @@ def new_game(choice):
 	clock = Ticker()
 	if choice == 0:
 		#create player object, Fighter class
-		fighter_component = Fighter(0, 0, clock, speed=10, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, 
+		fighter_component = Fighter(0, 0, speed=10, hp=100, defense=10, power=4, ranged=2, quiver=0, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
-		player.fighter.ticker.schedule_turn(player.fighter.speed, player)
+		clock.schedule_turn(player.fighter.speed, player)
 	elif choice == 1:
 		#create player object, Knight class
-		fighter_component = Fighter(0, 0, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, 
+		fighter_component = Fighter(0, 0, speed=12, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Knight')
 		player = Object(0, 0, '@', 'player', libtcod.brass, blocks=True, fighter=fighter_component)
 		player.level = 1
+		clock.schedule_turn(player.fighter.speed, player)
 	elif choice == 2:
 		#create player object, Ranger class
-		fighter_component = Fighter(0, 0, hp=80, defense=10, power=2, ranged=4, quiver=20, xp=0, 
+		fighter_component = Fighter(0, 0, speed=8, hp=80, defense=10, power=2, ranged=4, quiver=20, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Ranger')
 		player = Object(0, 0, '@', 'player', libtcod.gold, blocks=True, fighter=fighter_component)
 		player.level = 1
+		clock.schedule_turn(player.fighter.speed, player)
 	elif choice == 3:
 		#create player object, Wizard class
-		fighter_component = Fighter(0, 0, hp=60, defense=9, power=2, ranged=3, quiver=0, xp=0, 
+		fighter_component = Fighter(0, 0, speed=11, hp=60, defense=9, power=2, ranged=3, quiver=0, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Wizard')
 		player = Object(0, 0, '@', 'player', libtcod.sky, blocks=True, fighter=fighter_component)
 		player.level = 1
+		clock.schedule_turn(player.fighter.speed, player)
 		
 	#generate map (not drawn yet)
 	dungeon_level = 1
@@ -2585,7 +2604,7 @@ def new_game(choice):
 	elif choice == 1:
 		#Knight equipment
 		#starting equipment: a warhammer
-		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d6', power_bonus=1, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d6', power_bonus=1, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel warhammer', libtcod.sky, equipment=equipment_component)
 		player.fighter.inventory.append(obj)
 		equipment_component.equip()
@@ -2696,13 +2715,20 @@ def initialize_fov():
 	libtcod.console_clear(con) #unexplored areas start black (default background color)
 
 def save_game():
+	global clock, kill_count, objects
 	#open a new shelf (overwriting any old one) to write the game data
+	#clock.schedule = {key:val for key, val in clock.schedule.items() if val == 'player'} #clear schedule
+	#clock.schedule.clear()
+	# for object in objects:
+		# if object.fighter is not None:
+			# object.fighter.ticker = None
 	file = shelve.open('savegame', 'n')
 	file['map'] = map
 	file['objects'] = objects
-	file['clock'] = clock
 	file['player_index'] = objects.index(player) #location of player in objects list
-	file['inventory'] = player.fighter.inventory
+	#file['inventory'] = player.fighter.inventory
+	file['clock'] = clock
+	#file['schedule'] = clock.schedule
 	file['kill_count'] = kill_count
 	file['game_msgs'] = game_msgs
 	file['game_state'] = game_state
@@ -2712,14 +2738,13 @@ def save_game():
 
 def load_game():
 	#open the previously saved shelf and load game data
-	global map, objects, player, inventory, game_msgs, game_state, stairs, dungeon_level
+	global map, objects, player, clock, game_msgs, game_state, stairs, dungeon_level, kill_count
 	
 	file = shelve.open('savegame', 'r')
 	map = file['map']
 	objects = file['objects']
-	clock = file['clock']
 	player = objects[file['player_index']] #get index of player and access it
-	player.fighter.inventory = file['inventory']
+	clock = file['clock']
 	kill_count = file['kill_count']
 	game_msgs = file['game_msgs']
 	game_state = file['game_state']
@@ -2727,9 +2752,17 @@ def load_game():
 	dungeon_level = file['dungeon_level']
 	file.close()
 
+	print(player.fighter.turn_count)
+	print(clock.ticks)
+	clock.schedule.clear()
+	for object in objects:
+		#if object == player:
+		#	print('found him!')
+		if object.fighter is not None:
+			clock.schedule_turn(object.fighter.speed, object)
+	#print(clock.schedule)
+	#print(player)
 	initialize_fov()
-	game_state = 'playing'
-	play_game()
 
 def character_dump():
 	global dungeon_level_name
@@ -2761,8 +2794,6 @@ def play_game():
 
 	mouse = libtcod.Mouse()
 	key = libtcod.Key()
-	
-	#clock = Ticker()
 	 
 	while not libtcod.console_is_window_closed():
 		#render the screen
@@ -2797,6 +2828,12 @@ def play_game():
 			# for object in objects:
 				# if object.ai:
 					# object.ai.take_turn()
+					
+		if game_state == 'dead':
+			key = libtcod.console_wait_for_keypress(True)
+			if key.vk == libtcod.KEY_ESCAPE:
+				break  #exit game
+			
 					
 def graphics_menu():
 	libtcod.console_clear(con)
