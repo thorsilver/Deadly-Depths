@@ -1507,7 +1507,7 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 	objects.append(monster)
-	clock.schedule_turn(monster.fighter.speed, objects.index(monster))	
+	clock.schedule_turn(monster.fighter.speed + 1, objects.index(monster))	
 	#print('Monster spawned!')
 	#print(monster.name, monster.x, monster.y, monster.fighter.hp)
 	
@@ -2238,7 +2238,7 @@ def handle_keys():
 def look_at_object():
 	message('Click on the object you want to examine, or ESC/right-click to cancel.', libtcod.sky)
 	obj = target_object()
-	if obj.fighter:
+	if obj is not None and obj.fighter:
 		if len(obj.fighter.resistances) == 1:
 			resists = obj.fighter.resistances[0]
 		else:
@@ -2253,6 +2253,8 @@ def look_at_object():
 			immune = ', '.join(obj.fighter.immunities)
 		msgbox(obj.name.title() + '\n' + 'Hit Points: ' + str(obj.fighter.hp) + '\n' + 'Speed: ' + str(obj.fighter.speed) + '\n' + 'Damage: ' + obj.fighter.damage_dice + '\n' + 
 			'Damage Type: ' + obj.fighter.damage_type + '\n' + 'Resistances: ' + resists + '\n' + 'Weaknesses: ' + weak + '\n' + 'Immunities: ' + immune + '\n')
+	elif obj is None:
+		message('No object selected!', libtcod.red)
 	else:
 		msgbox(obj.name.title())
 	
