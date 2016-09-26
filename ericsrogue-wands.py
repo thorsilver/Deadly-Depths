@@ -1507,7 +1507,7 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
 	objects.append(monster)
-	clock.schedule_turn(monster.fighter.speed + 1, objects.index(monster))	
+	clock.schedule_turn(monster.fighter.speed, objects.index(monster))	
 	#print('Monster spawned!')
 	#print(monster.name, monster.x, monster.y, monster.fighter.hp)
 	
@@ -2413,6 +2413,9 @@ def target_object(max_range=None):
 		for obj in objects:
 			if obj.x == x and obj.y == y and obj != player:
 				return obj
+		for item in items:
+			if item.x == x and item.y == y:
+				return item
 				
 def target_monster_or_player(max_range=None):
 	#returns a clicked monster inside FOV up to a range, or None if right-clicked
