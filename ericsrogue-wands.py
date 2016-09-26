@@ -82,7 +82,7 @@ color_light_wall = libtcod.Color(130, 110, 50)
 color_dark_ground = libtcod.Color(50, 50, 150)
 color_light_ground = libtcod.Color(200, 180, 50)
  
-LIMIT_FPS = 60  #20 frames-per-second maximum
+LIMIT_FPS = 120  #120 frames-per-second maximum
 
 # class Diceroll:
 	# #defining dice rolls for damage calculations
@@ -144,27 +144,45 @@ class Ticker:
 		self.schedule = {}
 		self.last_turn = 'monster'
 		
-	def schedule_turn(self, interval, obj):
-		self.schedule.setdefault(self.ticks + interval, []).append(obj)
+	def schedule_turn(self, interval, obj_index):
+		self.schedule.setdefault(self.ticks + interval, []).append(obj_index)
+		
+	def check_player_turn(self):
+		things_to_do = self.schedule.pop(self.ticks, [])
+		for obj in things_to_do:
+			if obj == player:
+				return 'player'
 		
 	def next_turn(self):
+		global key, mouse
 		things_to_do = self.schedule.pop(self.ticks, [])
 		#print(self.ticks)
 		#print(things_to_do)
 		for obj in things_to_do:
-			if obj == player:# and self.last_turn != 'player':
-				#print('Player takes a turn!')
+			if objects[obj] == player:# and self.last_turn != 'player':
 				#libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS|libtcod.EVENT_MOUSE,key,mouse)
+				key = libtcod.console_wait_for_keypress(True)
+				#if key.vk == libtcod.KEY_ENTER and key.lalt:
+					#Alt+Enter: toggle fullscreen
+				#	libtcod.console_set_fullscreen(not libtcod.console_is_fullscreen())
 				player_action = handle_keys()
+				# # turn_over = False
+				# # while turn_over == False:
+				# while True:
+					# #player_action = handle_keys()
+					# if player_action == 'exit':
+						# return 'exit'
+					# if player_action == 'acted':
+						# self.last_turn = 'player'
+						# break
+				#self.schedule_turn(player.fighter.speed, objects.index(player))
 				if player_action == 'exit':
 					return 'exit'
-				if player_action != 'didnt-take-turn':
-					self.last_turn = 'player'
-					self.ticks += 1
-				self.schedule_turn(player.fighter.speed, player)
-			elif obj != player and obj.ai and obj.ai is not None:
+				self.schedule_turn(player.fighter.speed, objects.index(player))
+				# print(player_action)
+			if objects[obj] != player and objects[obj].ai and objects[obj].ai is not None:
 				#print(obj.name + ' takes a turn!')
-				obj.ai.take_turn(clock)
+				objects[obj].ai.take_turn(clock)
 				self.last_turn = 'monster'
 
 class Object:
@@ -176,6 +194,7 @@ class Object:
 		self.char = char
 		self.name = name
 		self.color = color
+		#self.inventory = inventory
 		self.blocks = blocks
 		self.always_visible = always_visible
 		self.fighter = fighter
@@ -211,7 +230,7 @@ class Object:
 	def monster_mutator(self, mut_strength):
 		last_mut = 0
 		for mutation in range(mut_strength):
-			mut_choice = libtcod.random_get_int(0, 1, 6)
+			mut_choice = damageRoll('1d6')
 			if mut_choice == 6 and 'naga' in self.name:
 				mut_choice -= 1
 			if mut_choice == last_mut and mut_choice != 1:
@@ -226,40 +245,42 @@ class Object:
 				self.color += libtcod.violet
 				self.name = 'venomous ' + self.name
 				last_mut = 6
-			if mut_choice == 5:
+			elif mut_choice == 5:
 				self.fighter.max_hp += 20
 				self.fighter.hp += 20
 				self.fighter.xp += 30
 				self.color += libtcod.gold
 				self.name = 'golden ' + self.name
 				last_mut = 5
-			if mut_choice == 4:
+			elif mut_choice == 4:
 				self.fighter.max_hp += 10
 				self.fighter.hp += 10
 				self.fighter.defense += 2
 				self.color += libtcod.dark_sepia
 				self.name = 'cave ' + self.name
 				last_mut = 4
-			if mut_choice == 3:
+			elif mut_choice == 3:
 				self.fighter.base_power += 4
 				self.fighter.base_ranged += 4
 				self.fighter.xp += 25
 				self.color += libtcod.orange
 				self.name = 'hellfire ' + self.name
 				last_mut = 3
-			if mut_choice == 2:
+			elif mut_choice == 2:
 				self.fighter.base_defense += 4
 				self.fighter.xp += 15
 				self.color += libtcod.dark_grey
 				self.name = 'armored ' + self.name
 				last_mut = 2
-			if mut_choice == 1:
+			elif mut_choice == 1:
 				self.fighter.power += 2
 				self.fighter.defense += 2
 				self.fighter.xp += 15
 				self.color += libtcod.dark_yellow
 				self.name = 'dire ' + self.name
 				last_mut = 1
+			else:
+				print "Bad mutation!"
 
 	def move(self, dx, dy):
 		if not is_blocked(self.x + dx, self.y + dy):
@@ -412,16 +433,20 @@ class Object:
 			
 	def send_to_back(self):
 		#make object get drawn first, so others appear above it on same tile
-		global objects
-		objects.remove(self)
-		objects.insert(0, self)
+		global objects, items
+		if self in objects:
+			objects.remove(self)
+			objects.insert(0, self)
+		elif self in items:
+			items.remove(self)
+			items.insert(0, self)
 	def clear(self):
 		#erase the character that represents this object
 		libtcod.console_put_char(con, self.x, self.y, ' ', libtcod.BKGND_NONE)
 
 class Fighter:
 	#combat-related properties and methods (monsters, players, and NPCs)
-	def __init__(self, x, y, speed, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory=[], resistances=[], 
+	def __init__(self, x, y, speed, hp, defense, power, ranged, quiver, xp, damage_type, damage_dice, hunger=0, max_hunger=0, turn_count=0, poison_tick=0, inventory = [], resistances=[], 
 		immunities=[], weaknesses=[], enraged=False, poisoned=False, death_function=None, role=None):
 		self.x = x
 		self.y = y
@@ -478,7 +503,7 @@ class Fighter:
 			message(self.owner.name.title() + ' is weak from hunger!', libtcod.red)
 			self.hp -= 1
 		elif self.hunger < 50 and self.hunger % 2 == 0:
-			self.hp -= 1
+			self.hp -= 2
 			message(self.owner.name.title() + ' is slowly starving!', libtcod.red)
 		if self.hp <= 0:
 			self.check_death()
@@ -526,11 +551,9 @@ class Fighter:
 				function(self.owner)
 	
 	def attack(self, target, damage_type, damage_dice):
-		#a simple formula for physical attack damage
-		# damage = libtcod.random_get_int(0, 2, self.power) - target.fighter.defense
-		# if damage <= 0:
-			# damage = 1
 		#make a damage roll
+		attacker = self.owner
+		print(attacker.x, attacker.y, attacker.name, attacker.char, attacker.fighter.hp, damage_dice)
 		damage = damageRoll(damage_dice)
 		attack = self.AttackRoll(target.fighter)
 		
@@ -649,7 +672,7 @@ class Fighter:
 		elif self.quiver <= 0:
 			message(self.name.title() + ' ran out of arrows!', libtcod.green)
 			return 'didnt-take-turn'
-		elif get_equipped_in_slot('bow') is None and self.owner == player:
+		elif get_equipped_in_slot('bow', player) is None and self.owner == player:
 			message('You need a ranged weapon first!', libtcod.red)
 			return 'didnt-take-turn'
 
@@ -702,7 +725,7 @@ class ClockGolem:
 	#AI for ticker testing
 	def take_turn(self, clock):
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
@@ -720,7 +743,7 @@ class BasicMonster:
 	def take_turn(self, clock):
 		#basic monster takes its turn. If you can see it, it can see you
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
@@ -737,10 +760,10 @@ class SplitterAI:
 	def take_turn(self, clock):
 		#monster takes turn, only active when within player's FOV
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
-		actRoll = damageRoll('1d6')
-		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and actRoll > 4:
-			#move toward player when roll > 4 on d6
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
+		act_roll = damageRoll('1d6')
+		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and act_roll > 2:
+			#move toward player
 			if monster.distance_to(player) >= 2:
 				monster.move_dijk(player)
 			#attack if close enough, if player is still alive
@@ -748,7 +771,7 @@ class SplitterAI:
 				type = monster.fighter.damage_type
 				dice = monster.fighter.damage_dice
 				monster.fighter.attack(player, type, dice)
-		elif libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.hp < 10 and actRoll < 2:
+		elif libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and act_roll <= 2 and monster.fighter.hp < 10:
 			spotx, spoty = check_open_cell(monster.x, monster.y)
 			spawn_monster(spotx, spoty, monster.name, 0, 0, clock)
 			message('The ' + monster.name.title() + ' has split in two!', libtcod.red)
@@ -757,7 +780,7 @@ class BasicUndead:
 	def take_turn(self, clock):
 		#AI for a basic undead monster -- mindlessly advance, 1/4 of the time too stupid to act
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and damageRoll('1d4') > 1:
 			if monster.distance_to(player) >= 2:
 				monster.move_dijk(player)
@@ -770,7 +793,7 @@ class WolfAI:
 	#AI for a wolf - they can attack from outside FOV, and howl for extra power when injured!
 	def take_turn(self, clock):
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 20:
@@ -794,7 +817,7 @@ class PoisonSpitterAI:
 	#AI for poisonspitters -- they get to range and chuck poison goo, chance to hit based on Agility
 	def take_turn(self, clock):
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 15 and monster.distance_to(player) > 5:
@@ -819,7 +842,7 @@ class ArcherAI:
 	#AI for archers - they get to range and fire arrows
 	def take_turn(self, clock):
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		range = monster.distance_to(player)
@@ -843,7 +866,7 @@ class AngryWolf:
 	#AI for wolf awoken by a packmate's howl -- they'll charge in from up to 25 tiles away!
 	def take_turn(self, clock):
 		monster = self.owner
-		clock.schedule_turn(monster.fighter.speed, monster)
+		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		monster.fighter.enraged = True
@@ -887,17 +910,17 @@ class Item:
 			message('Your inventory is full, cannot pick up ' + self.owner.name.title() + '.', libtcod.red)
 		elif not arrows:
 			player.fighter.inventory.append(self.owner)
-			objects.remove(self.owner)
+			items.remove(self.owner)
 			message('You picked up a ' + self.owner.name.title() + '!', libtcod.green)
 		#special case: if item is Equipment, automatically equip if slot is open
-		equipment = self.owner.equipment
-		if equipment and get_equipped_in_slot(equipment.slot) is None:
-			equipment.equip()
+		# equipment = self.owner.equipment
+		# if equipment and get_equipped_in_slot(equipment.slot, player) is None:
+			# equipment.equip()
 
 		#special case: if item is Arrows, automatically add to Quiver if <= 99
 		if arrows and player.fighter.quiver < 99:
 			player.fighter.quiver += arrows.number
-			objects.remove(self.owner)
+			items.remove(self.owner)
 			if player.fighter.quiver >= 99:
 				player.fighter.quiver = 99
 			message('You now have ' + str(player.fighter.quiver) + ' arrows in your quiver.', libtcod.yellow)
@@ -939,7 +962,7 @@ class Item:
 			self.owner.equipment.dequip()
 		
 		#add to the map and remove from the player's inventory
-		objects.append(self.owner)
+		items.append(self.owner)
 		player.fighter.inventory.remove(self.owner)
 		self.owner.x = player.x
 		self.owner.y = player.y
@@ -947,7 +970,7 @@ class Item:
 
 class Equipment:
 	#an object that can be equipped, yielding bonuses/special abilities
-	def __init__(self, slot, damage_type, damage_dice, damage_mod = 0, power_bonus=0, ranged_bonus=0, defense_bonus=0, max_hp_bonus=0):
+	def __init__(self, slot, damage_type=None, damage_dice=None, damage_mod=0, power_bonus=0, ranged_bonus=0, defense_bonus=0, max_hp_bonus=0, is_equipped=False):
 		self.slot = slot
 		self.damage_type = damage_type
 		self.damage_dice = damage_dice
@@ -956,21 +979,26 @@ class Equipment:
 		self.ranged_bonus = ranged_bonus
 		self.defense_bonus = defense_bonus
 		self.max_hp_bonus = max_hp_bonus
-		self.is_equipped = False
+		self.is_equipped = is_equipped
+		
 	def toggle_equip(self):
 		if self.is_equipped:
 			self.dequip()
 		else:
 			self.equip()
+
 	def equip(self):
 		#if slot is used, dequip whatever's there first
-		old_equipment = get_equipped_in_slot(self.slot)
+		old_equipment = get_equipped_in_slot(self.slot, player)
 		if old_equipment is not None:
-			old_equipment.dequip
-		
+			#message('Slot already full!  Dequip the equipped gear first.', libtcod.red)
+			#return
+			old_equipment.dequip()
+		#else:
 		#equip object and alert the player
 		self.is_equipped = True
 		message('Equipped ' + self.owner.name.title() + ' on ' + self.slot + '.', libtcod.light_green)
+
 	def dequip(self):
 		self.is_equipped = False
 		message('Dequipped ' + self.owner.name.title() + ' from ' + self.slot + '.', libtcod.light_yellow)
@@ -1046,10 +1074,22 @@ def cast_magic_missile():
 		
 	
 
-def get_equipped_in_slot(slot): #returns equipment in slot, None if empty
-	for obj in player.fighter.inventory:
-		if obj.equipment and obj.equipment.slot == slot and obj.equipment.is_equipped:
-			return obj.equipment
+def get_equipped_in_slot(slot, creature): #returns equipment in slot, None if empty
+	#print slot
+	#flerp = get_all_equipped(player)
+	#for gear in flerp:
+	#	print(gear.owner.name, gear.slot, gear.is_equipped)
+	# for gear in flerp:
+		# print(gear.owner.name, gear.slot, slot)
+		# if gear.slot == slot and gear.is_equipped:
+			# return gear
+		# else:
+			# return None
+	for item in creature.fighter.inventory:
+		if item.equipment:
+			#print(item.name, item.equipment.damage_dice, item.equipment.slot)
+			if item.equipment.slot == slot and item.equipment.is_equipped:
+				return item.equipment
 	return None
 
 def get_all_equipped(obj): #gets a list of equipped items
@@ -1063,28 +1103,28 @@ def get_all_equipped(obj): #gets a list of equipped items
 		return [] #other objects have no slots (at the moment)
 		
 def get_weapon_damage(): #retrieve weapon damage from equipped weapon
-	weapon = get_equipped_in_slot('right hand')
-	if weapon is not None and weapon.is_equipped:
+	weapon = get_equipped_in_slot('right hand', player)
+	if weapon is not None:
 		return weapon.damage_dice
 	else:
 		return '1d4' #default unarmed damage
 	
 def get_damage_type(): #retrieve weapon damage type from equipped weapon
-	weapon = get_equipped_in_slot('right hand')
-	if weapon is not None and weapon.is_equipped:
+	weapon = get_equipped_in_slot('right hand', player)
+	if weapon is not None:
 		return weapon.damage_type
 	else:
 		return 'phys'
 		
 def get_bow_damage(): #retrieve damage dice value from bow slot
-	bow = get_equipped_in_slot('bow')
+	bow = get_equipped_in_slot('bow', player)
 	if bow is not None and bow.is_equipped:
 		return bow.damage_dice
 	else:
 		return None
 		
 def get_bow_type(): #retrieve damage type of equipped missile weapon
-	bow = get_equipped_in_slot('bow')
+	bow = get_equipped_in_slot('bow', player)
 	if bow is not None and bow.is_equipped:
 		return bow.damage_type
 	else:
@@ -1132,7 +1172,7 @@ def make_map():
 	global map, objects, stairs
 
 	#list of objects with just the player
-	objects = [player]
+	#objects.append(player)
 	
 	#fill map with unblocked tiles
 	map = [[ Tile(True)
@@ -1195,7 +1235,7 @@ def make_map():
 	#create stairs in the center of the last room
 	stairs = Object(new_x, new_y, '>', 'stairs', libtcod.white, always_visible=True)
 	objects.append(stairs)
-	stairs.send_to_back()
+	#stairs.send_to_back()
 
 				
 ###############################
@@ -1204,7 +1244,7 @@ def make_map():
 
 def make_bsp():
 	global player, map, objects, stairs, bsp_rooms
-	objects = [player]
+	#objects = [player]
 	map = [[Tile(True) for y in range(MAP_HEIGHT)] for x in range(MAP_WIDTH)]
 	#empty global list for storing room coordinates
 	bsp_rooms = []
@@ -1223,7 +1263,7 @@ def make_bsp():
 	bsp_rooms.remove(stairs_location)
 	stairs = Object(stairs_location[0], stairs_location[1], '>', 'stairs', libtcod.white, always_visible=True)
 	objects.append(stairs)
-	stairs.send_to_back()
+	#stairs.send_to_back()
 	
 	#random room for player start
 	player_room = random.choice(bsp_rooms)
@@ -1399,17 +1439,17 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
 			monster.monster_mutator(mutation_num)
 	elif choice == 'orc archer':
 		#create an orc archer
-		fighter_component = Fighter(x, y, speed=8, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
+		fighter_component = Fighter(x, y, speed=11, hp=8, defense=9, power=1, ranged=4, quiver=15, xp=50, damage_type='pierce', damage_dice='1d4', death_function=archer_death)
 		ai_component = ArcherAI()
 		monster = Object(x, y, 'o', 'orc archer', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'elite orc archer':
 		#create an elite orc archer
-		fighter_component = Fighter(x, y, speed=7, hp=18, defense=12, power=2, ranged=6, quiver=15, xp=80, damage_type='pierce', damage_dice='2d6', death_function=archer_death)
+		fighter_component = Fighter(x, y, speed=9, hp=18, defense=12, power=2, ranged=6, quiver=15, xp=80, damage_type='pierce', damage_dice='2d6', death_function=archer_death)
 		ai_component = ArcherAI()
-		monster = Object(x, y, 'o', 'orc archer', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
+		monster = Object(x, y, 'o', 'elite orc archer', libtcod.light_red, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'devil archer':
 		#create a devil archer
-		fighter_component = Fighter(x, y, speed=6, hp=30, defense=16, power=4, ranged=9, quiver=15, xp=130, damage_type='fire', damage_dice='2d10', death_function=archer_death)
+		fighter_component = Fighter(x, y, speed=7, hp=30, defense=16, power=4, ranged=9, quiver=15, xp=130, damage_type='fire', damage_dice='2d10', death_function=archer_death)
 		ai_component = ArcherAI()
 		monster = Object(x, y, 'd', 'devil archer', libtcod.orange, blocks=True, fighter=fighter_component, ai=ai_component)
 	elif choice == 'orc captain':
@@ -1452,15 +1492,20 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
 		monster = Object(x, y, 'N', 'naga', libtcod.light_green, blocks=True, fighter=fighter_component, ai=ai_component)
 		if mutation_roll > 6:
 			monster.monster_mutator(mutation_num)
-			
-	clock.schedule_turn(monster.fighter.speed, monster)	
 	objects.append(monster)
+	clock.schedule_turn(monster.fighter.speed, objects.index(monster))	
+	print('Monster spawned!')
+	print(monster.name, monster.x, monster.y, monster.fighter.hp)
 	
 def place_item(x, y, choice):
 	if choice == 'heal':
 		#create a healing potion
 		item_component = Item(use_function=cast_heal)
 		item = Object(x, y, '!', 'healing potion', libtcod.pink, item=item_component)
+	elif choice == 'tester sword':
+		#create a tester sword
+		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='3d12', power_bonus=7)
+		item = Object(x, y, '-', 'tester sword', libtcod.gold, equipment=equipment_component)
 	elif choice == 'ration pack':
 		#create a ration pack
 		food_component = Food('normal', 300)
@@ -1500,7 +1545,7 @@ def place_item(x, y, choice):
 	elif choice == 'longsword':
 		#create a longsword
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d4', power_bonus=3)
-		item = Object(x, y, '/', 'longsword', libtcod.sky, equipment=equipment_component)
+		item = Object(x, y, '-', 'longsword', libtcod.sky, equipment=equipment_component)
 	elif choice == 'shield':
 		#create a shield
 		equipment_component = Equipment(slot='left hand', defense_bonus=2)
@@ -1508,47 +1553,47 @@ def place_item(x, y, choice):
 	elif choice == 'lance':
 		#create a lance
 		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d6', power_bonus=3)
-		item = Object(x, y, '/', 'lance', libtcod.sky, equipment=equipment_component)
+		item = Object(x, y, '-', 'lance', libtcod.sky, equipment=equipment_component)
 	elif choice == 'battleaxe':
 		#create a battleaxe
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='1d10', power_bonus=3)
-		item = Object(x, y, '/', 'battleaxe', libtcod.sky, equipment=equipment_component)
+		item = Object(x, y, '-', 'battleaxe', libtcod.sky, equipment=equipment_component)
 	elif choice == 'morningstar':
 		#create a morningstar
 		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='1d8', power_bonus=3)
-		item = Object(x, y, '/', 'morningstar', libtcod.sky, equipment=equipment_component)
+		item = Object(x, y, '-', 'morningstar', libtcod.sky, equipment=equipment_component)
 	elif choice == 'Elvish longbow':
 		#create a longbow
 		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d6', ranged_bonus=3)
-		item = Object(x, y, '/', 'Elvish longbow', libtcod.sky, equipment=equipment_component)
+		item = Object(x, y, '{', 'Elvish longbow', libtcod.sky, equipment=equipment_component)
 	elif choice == 'rapier':
 		#create a lance
 		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d4', power_bonus=3)
-		item = Object(x, y, '/', 'rapier', libtcod.sky, equipment=equipment_component)
+		item = Object(x, y, '-', 'rapier', libtcod.sky, equipment=equipment_component)
 	elif choice == 'h_rapier':
 		#create an ornate rapier
 		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d8', power_bonus=5)
-		item = Object(x, y, '/', 'ornate rapier', libtcod.yellow, equipment=equipment_component)
+		item = Object(x, y, '-', 'ornate rapier', libtcod.yellow, equipment=equipment_component)
 	elif choice == 'h_sword':
 		#create bastard sword
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d8', power_bonus=5)
-		item = Object(x, y, '/', 'bastard sword', libtcod.yellow, equipment=equipment_component)
+		item = Object(x, y, '-', 'bastard sword', libtcod.yellow, equipment=equipment_component)
 	elif choice == 'h_lance':
 		#create a heavy lance
 		equipment_component = Equipment(slot='right hand', damage_type='pierce', damage_dice='2d10', power_bonus=5)
-		item = Object(x, y, '/', 'heavy lance', libtcod.yellow, equipment=equipment_component)
+		item = Object(x, y, '-', 'heavy lance', libtcod.yellow, equipment=equipment_component)
 	elif choice == 'h_battleaxe':
 		#create a greataxe
 		equipment_component = Equipment(slot='right hand', damage_type='phys', damage_dice='2d10', power_bonus=5)
-		item = Object(x, y, '/', 'greataxe', libtcod.yellow, equipment=equipment_component)
+		item = Object(x, y, '-', 'greataxe', libtcod.yellow, equipment=equipment_component)
 	elif choice == 'h_morningstar':
 		#create a heavy morningstar
 		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d8', power_bonus=5)
-		item = Object(x, y, '/', 'heavy morningstar', libtcod.yellow, equipment=equipment_component)
+		item = Object(x, y, '-', 'heavy morningstar', libtcod.yellow, equipment=equipment_component)
 	elif choice == 'h_warhammer':
 		#create a heavy warhammer
 		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d10', power_bonus=5)
-		item = Object(x, y, '/', 'heavy warhammer', libtcod.yellow, equipment=equipment_component)
+		item = Object(x, y, '-', 'heavy warhammer', libtcod.yellow, equipment=equipment_component)
 	elif choice == 'h_shortbow':
 		#create a gleamwood shortbow
 		equipment_component = Equipment(slot='bow', damage_type='pierce', damage_dice='2d10', ranged_bonus=5)
@@ -1560,69 +1605,69 @@ def place_item(x, y, choice):
 	elif choice == 'w_mmissile':
 		#WAND TEST: wand of magic missile
 		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_magic_missile)
-		item = Object(0, 0, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
+		item = Object(x, y, '/', 'wand of magic missile', libtcod.orange, wand=wand_component)
 	elif choice == 'w_lightning':
 		#WAND TEST 2: wand of lightning
 		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_lightning)
-		item = Object(0, 0, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
+		item = Object(x, y, '/', 'wand of lightning', libtcod.yellow, wand=wand_component)
 	elif choice == 'w_confusion':
 		#WAND TEST 3: wand of confusion
 		wand_component = Wand(charges=7, max_charges=15, zap_function=cast_confuse)
-		item = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
+		item = Object(x, y, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
 	elif choice == 'w_fireball':
 		#WAND TEST 7: wand of fireball
 		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_fireball)
-		item = Object(0, 0, '/', 'wand of fireball', libtcod.red, wand=wand_component)
+		item = Object(x, y, '/', 'wand of fireball', libtcod.red, wand=wand_component)
 	elif choice == 'w_death':
 		#WAND TEST 9: wand of death
 		wand_component = Wand(charges=3, max_charges=10, zap_function=cast_death)
-		item = Object(0, 0, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
+		item = Object(x, y, '/', 'wand of death', libtcod.light_grey, wand=wand_component)
 	elif choice == 'w_warp':
 		#WAND TEST 10: wand of teleportation
 		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
-		item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+		item = Object(x, y, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 	elif choice == 'w_petrify':
 		#WAND TEST 11: wand of petrification
 		wand_component = Wand(charges=5, max_charges=10, zap_function=cast_petrify)
-		item = Object(0, 0, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
+		item = Object(x, y, '/', 'wand of petrification', libtcod.sepia, wand=wand_component)
 	elif choice == 'w_swap':
 		#WAND TEST 12: wand of transposition
 		wand_component = Wand(charges=10, max_charges=20, zap_function=cast_swap)
-		item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
+		item = Object(x, y, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
 	elif choice == 'w2_mmissile':
 		#WAND TEST4: fine wand of magic missile
 		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_magic_missile)
-		item = Object(0, 0, '/', 'wand of magic missile', libtcod.light_orange, wand=wand_component)
+		item = Object(x, y, '/', 'wand of magic missile', libtcod.light_orange, wand=wand_component)
 	elif choice == 'w2_lightning':
 		#WAND TEST 5: fine wand of lightning
 		wand_component = Wand(charges=10, max_charges=10, zap_function=cast_lightning)
-		item = Object(0, 0, '/', 'wand of lightning', libtcod.light_yellow, wand=wand_component)
+		item = Object(x, y, '/', 'wand of lightning', libtcod.light_yellow, wand=wand_component)
 	elif choice == 'w2_confusion':
 		#WAND TEST 6: fine wand of confusion
 		wand_component = Wand(charges=15, max_charges=15, zap_function=cast_confuse)
-		item = Object(0, 0, '/', 'wand of confusion', libtcod.light_sky, wand=wand_component)
+		item = Object(x, y, '/', 'wand of confusion', libtcod.light_sky, wand=wand_component)
 	elif choice == 'w2_fireball':
 		#WAND TEST 8: fine wand of fireball
 		wand_component = Wand(charges=10, max_charges=10, zap_function=cast_fireball)
-		item = Object(0, 0, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
+		item = Object(x, y, '/', 'wand of fireball', libtcod.light_red, wand=wand_component)
 	elif choice == 'w2_death':
 		#WAND TEST 9: ornate wand of death
 		wand_component = Wand(charges=7, max_charges=10, zap_function=cast_death)
-		item = Object(0, 0, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
+		item = Object(x, y, '/', 'ornate wand of death', libtcod.lighter_grey, wand=wand_component)
 	elif choice == 'w2_warp':
 		#WAND TEST 10: fine wand of teleportation
 		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_warp)
-		item = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
+		item = Object(x, y, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
 	elif choice == 'w2_petrify':
 		#WAND TEST 12: wand of petrification
 		wand_component = Wand(charges=10, max_charges=10, zap_function=cast_petrify)
-		item = Object(0, 0, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
+		item = Object(x, y, '/', 'wand of petrification', libtcod.light_sepia, wand=wand_component)
 	elif choice == 'w2_swap':
 		#WAND TEST 12: wand of transposition
 		wand_component = Wand(charges=20, max_charges=20, zap_function=cast_swap)
-		item = Object(0, 0, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
-	objects.append(item)
-	item.send_to_back() #items appear behind other objects
+		item = Object(x, y, '/', 'wand of transposition', libtcod.light_green, wand=wand_component)
+	items.append(item)
+	#item.send_to_back() #items appear behind other objects
 	item.always_visible=True #items always visible once explored
 
 def place_objects(room):
@@ -1635,17 +1680,17 @@ def place_objects(room):
 
 	#chances for each monster
 	monster_chances = {}
-	monster_chances['clock golem'] = 0 #testing testing 1 2 3
+	#monster_chances['clock golem'] = 0 #testing testing 1 2 3
 	monster_chances['orc'] = 60 #orc always shows up
 	monster_chances['orc archer'] = 35 #orc archers always show up, for now
-	monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
-	monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
-	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
 	monster_chances['wolf'] = 60 #wolf always shows up
 	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
 	monster_chances['zombie'] = 20
 	monster_chances['skel_warrior'] = 40
 	monster_chances['gelatinous mass'] = 20
+	monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
+	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
 	monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
 	monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
 	monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
@@ -1661,6 +1706,7 @@ def place_objects(room):
 	item_chances['heal'] = 35 #healing pots always show up
 	item_chances['ration pack'] = 20
 	item_chances['antidote'] = 25 #antidotes always show up
+	item_chances['tester sword'] = from_dungeon_level([[50, 5]]) #megadeath sword for testing
 	item_chances['lightning'] = from_dungeon_level([[25, 4]])
 	item_chances['fireball'] = from_dungeon_level([[25, 6]])
 	item_chances['confuse'] = from_dungeon_level([[10, 2]])
@@ -1882,12 +1928,19 @@ def render_all():
 						# libtcod.console_put_char_ex(con, x, y, floor_tile, libtcod.white, libtcod.black)
 					# #since it's visible, call it explored!
 					# map[x][y].explored = True
-
+	
+	#draw corpses and stairs first
+	for object in objects:
+		if object.name == 'stairs' or 'remains' in object.name:
+			object.draw()
+	#before objects, draw all items in the items list
+	for item in items:
+		item.draw()
 	#draw all objects in the list except player!
 	for object in objects:
-		if object!= player:
+		if object!= player and object.name != 'stairs' and 'remains' not in object.name:
 			object.draw()
-	#draw player
+	#draw player last
 	player.draw()
 
 	#blit the contents of con to the root console
@@ -2010,7 +2063,7 @@ def menu(header, options, width):
 	return None
 
 def inventory_menu(header):
-	#show a menu with each inventory item as an option
+	#show a menu with each player.fighter.inventory item as an option
 	if len(player.fighter.inventory) == 0:
 		options = ['Inventory is empty.']
 	else:
@@ -2018,8 +2071,10 @@ def inventory_menu(header):
 		for item in player.fighter.inventory:
 			text = item.name
 			#show additional info, in case it's equipped
-			if item.equipment and item.equipment.is_equipped:
-				text = text + ' (on ' + item.equipment.slot + ')'
+			if item.equipment and item.equipment.is_equipped and item.equipment.damage_dice is not None:
+					text = text + ' (on ' + item.equipment.slot + ')' + '(' + item.equipment.damage_dice + ')'
+			elif item.equipment and item.equipment.damage_dice is not None:
+				text = text + '(' + item.equipment.damage_dice + ')'
 			options.append(text)
 
 	index = menu(header, options, INVENTORY_WIDTH)
@@ -2053,7 +2108,7 @@ def msgbox(text, width=50):
  
  
 def handle_keys():
-	global keys
+	global mouse, keys
  
     #key = libtcod.console_check_for_keypress()  #real-time
 	key = libtcod.console_wait_for_keypress(True)  #turn-based
@@ -2070,15 +2125,19 @@ def handle_keys():
 		#movement keys
 		if key.vk == libtcod.KEY_UP:
 			player_move_or_attack(0, -1)
+			return 'acted'
 	 
 		elif key.vk == libtcod.KEY_DOWN:
 			player_move_or_attack(0, 1)
+			return 'acted'
 	 
 		elif key.vk == libtcod.KEY_LEFT:
 			player_move_or_attack(-1, 0)
+			return 'acted'
 	 
 		elif key.vk == libtcod.KEY_RIGHT:
 			player_move_or_attack(1, 0)
+			return 'acted'
 			
 		elif key_char == 'z':
 			if wand_menu() == 'didnt-take-turn':
@@ -2087,11 +2146,13 @@ def handle_keys():
 			
 		elif key_char == 'f':
 			#fire an arrow if arrows are available
-			if player.fighter.quiver > 0 and get_equipped_in_slot('bow') is not None:
+			if player.fighter.quiver > 0 and get_equipped_in_slot('bow', player) is not None:
 				check = fire_arrow()
 				if check == 'didnt-take-turn':
 					return 'didnt-take-turn'
-			elif player.fighter.quiver > 0 and get_equipped_in_slot('bow') is None:
+				else:
+					return 'acted'
+			elif player.fighter.quiver > 0 and get_equipped_in_slot('bow', player) is None:
 				message('You do not have a ranged weapon!', libtcod.red)
 				return 'didnt-take-turn'
 			elif player.fighter.quiver <= 0:
@@ -2107,9 +2168,9 @@ def handle_keys():
 
 			if key_char == 'g':
 				#pick up an item
-				for object in objects: #check for object in player's tile
-					if object.x == player.x and object.y == player.y and object.item:
-						object.item.pick_up()
+				for loot in items: #check for object in player's tile
+					if loot.x == player.x and loot.y == player.y and loot.item:
+						loot.item.pick_up()
 						break
 			if key_char == 'i':
 				#show the inventory; if an item is selected, use it
@@ -2133,7 +2194,50 @@ def handle_keys():
 					str(level_up_xp) + '\n\nMaximum HP: ' + str(player.fighter.max_hp) + 
 					'\nAttack: ' + str(player.fighter.power) + '\nRanged Attack: ' + str(player.fighter.ranged) + '\nDefense: ' + str(player.fighter.defense) + 
 					'\nSpeed: ' + str(player.fighter.speed) + '\nQuiver: ' + str(player.fighter.quiver), CHARACTER_SCREEN_WIDTH)
+			if key_char == 'v':
+				#debug -- testing get_equipped_in_slot
+				#derp = get_equipped_in_slot('right hand', player)
+				#print(derp.owner.name, derp.slot, derp.damage_dice)
+				derp = get_all_equipped(player)
+				slots = [obj.slot for obj in derp]
+				slots = ', '.join(slots)
+				names = [obj.owner.name for obj in derp]
+				names = ', '.join(names)
+				print names
+				print slots
+			if key_char == 'm':
+				#debug -- make all objects visible
+				for object in objects:
+					object.always_visible = True
+				for y in range(MAP_HEIGHT):
+					for x in range(MAP_WIDTH):
+						map[x][y].explored = True
+			if key_char == 'l':
+				#look at a clicked object to get details (add descriptions later)
+				look_at_object()
+				render_all()
+				
+					
 			return 'didnt-take-turn'
+			
+def look_at_object():
+	message('Click on the object you want to examine, or ESC/right-click to cancel.', libtcod.sky)
+	obj = target_object()
+	if obj.fighter:
+		if len(obj.fighter.resistances) == 1:
+			resists = obj.fighter.resistances
+			weak = obj.fighter.weaknesses
+			immune = obj.fighter.immunities
+		else:
+			resists = ', '.join(obj.fighter.resistances)
+			weak = ', '.join(obj.fighter.weaknesses)
+			immune = ', '.join(obj.fighter.immunities)
+		msgbox(obj.name.title() + '\n' + 'Hit Points: ' + str(obj.fighter.hp) + '\n' + 'Speed: ' + str(obj.fighter.speed) + '\n' + 'Damage: ' + obj.fighter.damage_dice + '\n' + 
+			'Damage Type: ' + obj.fighter.damage_type.title() + '\n' + 'Resistances: ' + resists.title() + '\n' + 'Weaknesses: ' + weak.title() + '\n' + 'Immunities: ' + immune.title() + '\n')
+	else:
+		msgbox(obj.name.title())
+	
+	
 
 def get_names_under_mouse():
 	global mouse
@@ -2184,15 +2288,27 @@ def player_death(player):
 	player.color = libtcod.dark_red
 
 def monster_death(monster):
+	global clock
 	#transform monster into a corpse! no more moves or attacks, can't be attacked
 	message(monster.name.title() + ' is dead! You gained ' + str(monster.fighter.xp) + ' experience points.', libtcod.orange)
+	print(len(clock.schedule))
+	for k,v in clock.schedule.items():
+		if v == objects.index(monster):
+			del clock.schedule[k]
+	#clock.schedule = {k: v for k, v in clock.schedule.items() if v != monster.fighter}
+	print(len(clock.schedule))
 	monster.char = '%'
 	monster.color = libtcod.dark_red
 	monster.blocks = False
 	monster.fighter = None
 	monster.ai = None
 	monster.name = 'remains of ' + monster.name
-	monster.send_to_back()
+	#monster.send_to_back()
+	# corpse = Object(monster.x, monster.y, '%', monster.name, libtcod.dark_red)
+	# objects.append(corpse)
+	# corpse.send_to_back()
+	# objects.remove(monster)
+	
 	
 def archer_death(monster):
 	global objects
@@ -2200,8 +2316,8 @@ def archer_death(monster):
 	if monster.fighter.quiver > 0:
 		arrows_component = Arrows(type=1, number=monster.fighter.quiver)
 		item = Object(monster.x, monster.y, '^', str(monster.fighter.quiver) + ' arrows', libtcod.sepia, arrows=arrows_component)
-		objects.append(item)
-		item.send_to_back()
+		items.append(item)
+		#item.send_to_back()
 	dropRoll = damageRoll('1d10')
 	if dropRoll > 9 and monster.name == 'orc archer':
 		place_item(monster.x, monster.y, 'orcbow')
@@ -2264,6 +2380,17 @@ def target_monster(max_range=None):
 		#return the first clicked monster, otherwise keep looping
 		for obj in objects:
 			if obj.x == x and obj.y == y and obj.fighter and obj != player:
+				return obj
+				
+def target_object(max_range=None):
+	#returns a clicked object inside FOV up to a range, or None if right-clicked
+	while True:
+		(x, y) = target_tile(max_range)
+		if x is None: #player cancelled
+			return None
+		#return the first clicked monster, otherwise keep looping
+		for obj in objects:
+			if obj.x == x and obj.y == y and obj != player:
 				return obj
 				
 def target_monster_or_player(max_range=None):
@@ -2404,7 +2531,7 @@ def cast_petrify():
 	message(monster.name.title() + ' is petrified! You gained ' + str(int(monster.fighter.xp / 2)) + ' experience points.', libtcod.orange)
 	player.fighter.xp += int(monster.fighter.xp / 2)
 	monster.color = libtcod.sepia
-	fighter_component = Fighter(monster.x, monster.y, hp=25, defense=0, power=0, ranged=0, quiver=0, xp=0, death_function=statue_crumble)
+	fighter_component = Fighter(monster.x, monster.y, speed=0, hp=25, defense=0, power=0, ranged=0, quiver=0, xp=0, damage_type='phys', damage_dice='', death_function=statue_crumble)
 	monster.fighter = fighter_component
 	monster.fighter.owner = monster
 	monster.ai = None
@@ -2518,8 +2645,10 @@ def next_level():
 	message('After a rare moment of peace, you descend deeper into the labyrinth...', libtcod.red)
 	dungeon_level += 1
 	clock.schedule = {key:val for key, val in clock.schedule.items() if val == 'player'}
+	while items: items.pop()
 	while objects: objects.pop()
 	objects.append(player)
+	#objects = [object for object in objects if object is player]
 	print(objects)
 	print(clock.schedule)
 	#print(clock.schedule)
@@ -2538,7 +2667,9 @@ def load_customfont(): #TILES VERSION
 		a += 32
 
 def new_game(choice):
-	global player, inventory, game_msgs, kill_count, game_state, dungeon_level, clock
+	global player, objects, items, inventory, game_msgs, kill_count, game_state, dungeon_level, clock
+	objects = []
+	items = []
 	clock = Ticker()
 	if choice == 0:
 		#create player object, Fighter class
@@ -2546,28 +2677,32 @@ def new_game(choice):
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Fighter')
 		player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 		player.level = 1
-		clock.schedule_turn(player.fighter.speed, player)
+		objects.append(player)
+		clock.schedule_turn(player.fighter.speed, objects.index(player))
 	elif choice == 1:
 		#create player object, Knight class
-		fighter_component = Fighter(0, 0, speed=12, hp=120, defense=11, power=2, ranged=1, quiver=0, xp=0, 
+		fighter_component = Fighter(0, 0, speed=12, hp=1200, defense=11, power=7, ranged=1, quiver=0, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Knight')
 		player = Object(0, 0, '@', 'player', libtcod.brass, blocks=True, fighter=fighter_component)
 		player.level = 1
-		clock.schedule_turn(player.fighter.speed, player)
+		objects.append(player)
+		clock.schedule_turn(player.fighter.speed, objects.index(player))
 	elif choice == 2:
 		#create player object, Ranger class
 		fighter_component = Fighter(0, 0, speed=8, hp=80, defense=10, power=2, ranged=4, quiver=20, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Ranger')
 		player = Object(0, 0, '@', 'player', libtcod.gold, blocks=True, fighter=fighter_component)
 		player.level = 1
-		clock.schedule_turn(player.fighter.speed, player)
+		objects.append(player)
+		clock.schedule_turn(player.fighter.speed, objects.index(player))
 	elif choice == 3:
 		#create player object, Wizard class
 		fighter_component = Fighter(0, 0, speed=11, hp=60, defense=9, power=2, ranged=3, quiver=0, xp=0, 
 			damage_type='phys', damage_dice='1d4', hunger=500, max_hunger=500, death_function=player_death, role='Wizard')
 		player = Object(0, 0, '@', 'player', libtcod.sky, blocks=True, fighter=fighter_component)
 		player.level = 1
-		clock.schedule_turn(player.fighter.speed, player)
+		objects.append(player)
+		clock.schedule_turn(player.fighter.speed, objects.index(player))
 		
 	#generate map (not drawn yet)
 	dungeon_level = 1
@@ -2604,7 +2739,7 @@ def new_game(choice):
 	elif choice == 1:
 		#Knight equipment
 		#starting equipment: a warhammer
-		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='2d6', power_bonus=1, ranged_bonus=0)
+		equipment_component = Equipment(slot='right hand', damage_type='blunt', damage_dice='10d6', power_bonus=1, ranged_bonus=0)
 		obj = Object(0, 0, '-', 'steel warhammer', libtcod.sky, equipment=equipment_component)
 		player.fighter.inventory.append(obj)
 		equipment_component.equip()
@@ -2612,7 +2747,7 @@ def new_game(choice):
 		
 		#starting equipment: a steel tower shield
 		equipment_component = Equipment(slot='left hand', damage_type='', damage_dice='', power_bonus=0, defense_bonus=3, ranged_bonus=0)
-		obj = Object(0, 0, '{', 'Elvish short bow', libtcod.brass, equipment=equipment_component)
+		obj = Object(0, 0, '[', 'tower shield', libtcod.brass, equipment=equipment_component)
 		player.fighter.inventory.append(obj)
 		equipment_component.equip()
 		obj.always_visible = True
@@ -2678,7 +2813,7 @@ def new_game(choice):
 		# #WAND TEST 10: wand of teleportation
 		# wand_component = Wand(charges=10, max_charges=20, zap_function=cast_warp)
 		# obj = Object(0, 0, '/', 'wand of teleportation', libtcod.violet, wand=wand_component)
-		# inventory.append(obj)
+		# player.fighter.inventory.append(obj)
 		# obj.always_visible = True
 		
 		#WAND TEST 2: wand of lightning
@@ -2690,7 +2825,7 @@ def new_game(choice):
 		# #WAND TEST 3: wand of confusion
 		# wand_component = Wand(charges=5, max_charges=15, zap_function=cast_confuse)
 		# obj = Object(0, 0, '/', 'wand of confusion', libtcod.sky, wand=wand_component)
-		# inventory.append(obj)
+		# player.fighter.inventory.append(obj)
 		# obj.always_visible = True
 	
 	for rations in range(3):
@@ -2725,8 +2860,9 @@ def save_game():
 	file = shelve.open('savegame', 'n')
 	file['map'] = map
 	file['objects'] = objects
+	file['items'] = items
 	file['player_index'] = objects.index(player) #location of player in objects list
-	#file['inventory'] = player.fighter.inventory
+	#file['inventory'] = inventory
 	file['clock'] = clock
 	#file['schedule'] = clock.schedule
 	file['kill_count'] = kill_count
@@ -2743,6 +2879,7 @@ def load_game():
 	file = shelve.open('savegame', 'r')
 	map = file['map']
 	objects = file['objects']
+	items = file['items']
 	player = objects[file['player_index']] #get index of player and access it
 	clock = file['clock']
 	kill_count = file['kill_count']
@@ -2759,7 +2896,7 @@ def load_game():
 		#if object == player:
 		#	print('found him!')
 		if object.fighter is not None:
-			clock.schedule_turn(object.fighter.speed, object)
+			clock.schedule_turn(object.fighter.speed, objects.index(object))
 	#print(clock.schedule)
 	#print(player)
 	initialize_fov()
@@ -2814,7 +2951,23 @@ def play_game():
 		# if player_action == 'exit':
 			# save_game()
 			# break
-		clock.next_turn()
+		#clock.next_turn()
+		
+		# if game_state == 'playing':
+			# action = clock.check_player_turn()
+			# if action == 'player':
+				# player_action = handle_keys()
+				# while True:
+					# if player_action == 'exit':
+						# save_game()
+						# break
+					# if player_action == 'acted':
+						# break
+				# clock.next_turn()
+				# clock.schedule_turn(player.fighter.speed, objects.index(player))
+			# else:
+				# clock.next_turn()
+			# clock.ticks += 1
 
 		#let monsters take their turn
 		if game_state == 'playing':# and clock.last_turn == 'player':
@@ -2825,6 +2978,7 @@ def play_game():
 			if turn == 'exit':
 				save_game()
 				break
+				
 			# for object in objects:
 				# if object.ai:
 					# object.ai.take_turn()
