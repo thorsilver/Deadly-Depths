@@ -114,6 +114,11 @@ class Tile:
 		#by default, tiles start unexplored
 		#self.explored = True
 		self.explored = False
+		
+		#by default, tiles are not doors
+		self.door = False
+		self.door_closed = False
+		self.door_open = False
 
 		#by default, if a tile is blocked, it also blocks sight
 		if block_sight is None: block_sight = blocked
@@ -188,7 +193,7 @@ class Ticker:
 class Object:
 	#this is a generic object
 	#it's always represented by an ASCII character
-	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, fighter=None, ai=None, item=None, equipment=None, arrows=None, wand=None, food=None):
+	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, fighter=None, ai=None, item=None, equipment=None, arrows=None, wand=None, food=None, door=None):
 		self.x = x
 		self.y = y
 		self.char = char
@@ -226,6 +231,9 @@ class Object:
 			self.food.owner = self
 			self.item = Item()
 			self.item.owner = self
+		self.door = door
+		if self.door:
+			self.door.owner = self
 			
 	def monster_mutator(self, mut_strength):
 		last_mut = 0
@@ -897,7 +905,7 @@ class ConfusedMonster:
 		else: #restore previous AI
 			self.owner.ai = self.old_ai
 			message('The ' + self.owner.name.title() + ' is no longer confused!', libtcod.red)
-
+			
 class Item:
 	#an item that can be picked up and used
 	def __init__(self, use_function=None):
@@ -1235,7 +1243,40 @@ def make_map():
 	#create stairs in the center of the last room
 	stairs = Object(new_x, new_y, '>', 'stairs', libtcod.white, always_visible=True)
 	objects.append(stairs)
-	#stairs.send_to_back()
+	
+	#place doors (hope this works!!)
+	for room in rooms:
+		find_doors(room)
+		
+def find_doors(room):
+	#walk along each edge of the room, place doors in solo empty tiles along room walls
+	for tile in range(room.x1, room.x2):
+		if map[tile][room.y1].blocked == False and check_tiles_horiz(tile, room.y1) == False:
+			place_door(tile, room.y1)
+	for tile in range(room.x1, room.x2):
+		if map[tile][room.y2].blocked == False and check_tiles_horiz(tile, room.y2) == False:
+			place_door(tile, room.y2)
+	for tile in range(room.y1, room.y2):
+		if map[room.x1][tile].blocked == False and check_tiles_vert(room.x1, tile) == False:
+			place_door(room.x1, tile)
+	for tile in range(room.y1, room.y2):
+		if map[room.x2][tile].blocked == False and check_tiles_vert(room.x2, tile) == False:
+			place_door(room.x2, tile)
+			
+def check_tiles_horiz(x, y):
+	#check for open cells neighbouring door horizontally
+	d = [(x - 1, y), (x + 1, y)]
+	for (xx, yy) in d:
+		if map[xx][yy].blocked == False: return True
+	return False	
+	
+def check_tiles_vert(x, y):
+	#check for open cells neighbouring door vertically
+	d = [(x, y + 1), (x, y - 1)]
+	for (xx, yy) in d:
+		if map[xx][yy].blocked == False: return True
+	return False
+	
 
 				
 ###############################
@@ -1510,6 +1551,12 @@ def spawn_monster(x, y, choice, mutation_roll, mutation_num, clock):
 	clock.schedule_turn(monster.fighter.speed, objects.index(monster))	
 	#print('Monster spawned!')
 	#print(monster.name, monster.x, monster.y, monster.fighter.hp)
+	
+def place_door(x, y):
+	map[x][y].door = True
+	map[x][y].door_closed = True
+	map[x][y].blocked = True
+	map[x][y].block_sight = True
 	
 def place_item(x, y, choice):
 	if choice == 'heal':
@@ -1881,7 +1928,9 @@ def render_all():
 		for y in range(MAP_HEIGHT):
 			for x in range(MAP_WIDTH):
 				visible = libtcod.map_is_in_fov(fov_map, x, y)
-				wall = map[x][y].block_sight
+				wall = map[x][y].block_sight and not map[x][y].door
+				closed_door = map[x][y].door and map[x][y].door_closed
+				open_door = map[x][y].door and map[x][y].door_open
 				if not visible:
 					#if it's not visible, players can only see already-explored tiles
 					if map[x][y].explored:
@@ -1895,6 +1944,12 @@ def render_all():
 							#libtcod.console_put_char_ex(con, x, y, '#', libtcod.flame, libtcod.black)
 							#libtcod.console_set_char_background(con, x, y, libtcod.color_dark_wall, libtcod.BKGND_SET)
 							libtcod.console_set_char_background(con, x, y, dark_wall, libtcod.BKGND_SET)
+						elif closed_door:
+							libtcod.console_put_char_ex(con, x, y, '+', libtcod.darker_sepia, libtcod.BKGND_SET)
+							libtcod.console_set_char_background(con, x, y, libtcod.black, libtcod.BKGND_SET)
+						elif open_door:
+							libtcod.console_put_char_ex(con, x, y, '\\', libtcod.darker_sepia, libtcod.BKGND_SET)
+							libtcod.console_set_char_background(con, x, y, libtcod.black, libtcod.BKGND_SET)
 						else:
 							libtcod.console_put_char_ex(con, x, y, '.', libtcod.darker_grey, libtcod.black)
 							#libtcod.console_put_char_ex(con, x, y, ' ', libtcod.black, libtcod.black)
@@ -1910,6 +1965,12 @@ def render_all():
 						libtcod.console_put_char_ex(con, x, y, '#', libtcod.black, libtcod.BKGND_SET)
 						#libtcod.console_put_char_ex(con, x, y, '#', libtcod.light_flame, libtcod.black)
 						libtcod.console_set_char_background(con, x, y, light_wall, libtcod.BKGND_SET)
+					elif closed_door:
+						libtcod.console_put_char_ex(con, x, y, '+', libtcod.sepia, libtcod.BKGND_SET)
+						libtcod.console_set_char_background(con, x, y, libtcod.black, libtcod.BKGND_SET)
+					elif open_door:
+						libtcod.console_put_char_ex(con, x, y, '\\', libtcod.sepia, libtcod.BKGND_SET)
+						libtcod.console_set_char_background(con, x, y, libtcod.black, libtcod.BKGND_SET)
 					else:
 						#libtcod.console_set_char_background(con, x, y, color_light_ground, libtcod.BKGND_SET)
 						#libtcod.console_put_char_ex(con, x, y, '.', libtcod.light_flame, libtcod.black)
@@ -1991,6 +2052,42 @@ def render_all():
 
 	#blit the contents of the panel to the root console
 	libtcod.console_blit(panel, 0, 0, SCREEN_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_Y)
+	
+def open_door(x, y):
+	map[x][y].door_open = True
+	map[x][y].door_closed = False
+	map[x][y].blocked = False
+	map[x][y].block_sight = False
+	initialize_fov()
+	
+def close_door(x, y):
+	map[x][y].door_open = False
+	map[x][y].door_closed = True
+	map[x][y].blocked = True
+	map[x][y].block_sight = True
+	initialize_fov()
+
+def player_close_door():
+	global keys, game_state
+	message('Close which door? (enter direction):', libtcod.light_blue)
+	game_state = 'choice'
+	key = libtcod.console_wait_for_keypress(True)
+	if key.vk == libtcod.KEY_UP:
+		if map[player.x][player.y - 1].door and map[player.x][player.y - 1].door_open == True:
+			close_door(player.x, player.y - 1)
+	if key.vk == libtcod.KEY_DOWN:
+		if map[player.x][player.y + 1].door and map[player.x][player.y + 1].door_open == True:
+			close_door(player.x, player.y + 1)
+	if key.vk == libtcod.KEY_LEFT:
+		if map[player.x - 1][player.y].door and map[player.x - 1][player.y].door_open == True:
+			close_door(player.x - 1, player.y)
+	if key.vk == libtcod.KEY_RIGHT:
+		if map[player.x + 1][player.y].door and map[player.x + 1][player.y].door_open == True:
+			close_door(player.x + 1, player.y)
+	if key.vk == libtcod.KEY_ESCAPE:
+		game_state = 'playing'
+		return 'cancelled'
+	game_state = 'playing'
 
 def player_move_or_attack(dx, dy):
 	global fov_recompute
@@ -2005,12 +2102,16 @@ def player_move_or_attack(dx, dy):
 		if object.fighter and object.x == x and object.y == y:
 			target = object
 			break
+			
 
 	#attack if target found, otherwise move
 	type = get_damage_type()
 	damage_dice = get_weapon_damage()
-	if target is not None:
+	if target is not None and target.fighter:
 		player.fighter.attack(target, type, damage_dice)
+	elif map[x][y].door and map[x][y].door_closed:
+		open_door(x, y)
+		fov_recompute = True
 	else:
 		player.move(dx, dy)
 		fov_recompute = True
@@ -2156,7 +2257,10 @@ def handle_keys():
 		elif key_char == 'z':
 			if wand_menu() == 'didnt-take-turn':
 				return 'didnt-take-turn'
-			
+		
+		elif key_char == '/':
+			player_close_door()
+			return 'acted'
 			
 		elif key_char == 'f':
 			#fire an arrow if arrows are available
@@ -2185,6 +2289,7 @@ def handle_keys():
 				for loot in items: #check for object in player's tile
 					if loot.x == player.x and loot.y == player.y and loot.item:
 						loot.item.pick_up()
+						player.fighter.inventory.sort(key=lambda x: x.name)
 						break
 			if key_char == 'i':
 				#show the inventory; if an item is selected, use it
@@ -2927,6 +3032,7 @@ def load_game():
 
 def character_dump():
 	global dungeon_level_name
+	player.fighter.inventory.sort(key=lambda x: x.name)
 	timestr = time.strftime("%Y%m%d-%H%M%S")
 	with open('morgue' + timestr + '.txt', 'w') as morgue:
 		morgue.write('Player died in the ' + dungeon_level_name + ' (dungeon level ' + str(dungeon_level) + '), and had ' + 
