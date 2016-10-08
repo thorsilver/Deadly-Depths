@@ -4,6 +4,7 @@ import textwrap
 import shelve
 import random
 import time
+import dungeonGenerator
  
 #actual size of the window
 SCREEN_WIDTH = 80
@@ -159,12 +160,14 @@ class Ticker:
 				return 'player'
 		
 	def next_turn(self):
-		global key, mouse
+		global objects, player, key, mouse
 		things_to_do = self.schedule.pop(self.ticks, [])
 		#print(self.ticks)
-		#print(things_to_do)
+		#print(len(things_to_do))
+		#print(len(objects))
 		for obj in things_to_do:
-			if objects[obj] == player:# and self.last_turn != 'player':
+			print(obj, len(objects))
+			if objects[obj] == player:
 				#libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS|libtcod.EVENT_MOUSE,key,mouse)
 				key = libtcod.console_wait_for_keypress(True)
 				#if key.vk == libtcod.KEY_ENTER and key.lalt:
@@ -193,7 +196,7 @@ class Ticker:
 class Object:
 	#this is a generic object
 	#it's always represented by an ASCII character
-	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, fighter=None, ai=None, item=None, equipment=None, arrows=None, wand=None, food=None, door=None):
+	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, fighter=None, ai=None, item=None, equipment=None, arrows=None, wand=None, food=None):
 		self.x = x
 		self.y = y
 		self.char = char
@@ -231,9 +234,6 @@ class Object:
 			self.food.owner = self
 			self.item = Item()
 			self.item.owner = self
-		self.door = door
-		if self.door:
-			self.door.owner = self
 			
 	def monster_mutator(self, mut_strength):
 		last_mut = 0
@@ -727,7 +727,32 @@ def check_open_cell(x, y):
 	for (xx, yy) in d:
 		if map[xx][yy].blocked == True: continue
 		elif map[xx][yy].blocked == False: return xx, yy
-	return None		
+	return None
+	
+def check_dead_end(x, y):
+	#check if a cell is a dead end (for maze monster placement)
+	d = [(x - 1, y), (x - 1, y - 1), (x - 1, y + 1), (x, y + 1), (x + 1, y), (x + 1, y - 1), (x + 1, y + 1), (x, y - 1)]
+	neighbours = 0
+	for (xx, yy) in d:
+		if xx < 0 or yy < 0 or xx >= MAP_WIDTH or yy >= MAP_HEIGHT:
+			break
+		elif map[xx][yy].blocked == True:
+			neighbours += 1
+	if neighbours == 7:
+		return True
+	else:
+		return False
+		
+def count_dead_ends():
+	#count all dead ends in the maze, return a list of their map positions
+	dead_ends = []
+	for x in range(MAP_WIDTH):
+		for y in range(MAP_HEIGHT):
+			if map[x][y].blocked == False and check_dead_end(x, y) == True:
+				result = (x, y)
+				dead_ends.insert(0, result)
+	return dead_ends
+	
 	
 class ClockGolem:
 	#AI for ticker testing
@@ -737,8 +762,7 @@ class ClockGolem:
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
-				monster.move_dijk(player)
-
+				monster.move_astar(player)
 			#attack if close enough, if player is still alive
 			elif player.fighter.hp > 0 and 0 <= monster.distance_to(player) < 2:
 				type = monster.fighter.damage_type
@@ -755,7 +779,7 @@ class BasicMonster:
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 			#move toward player if far away
 			if monster.distance_to(player) >= 2:
-				monster.move_dijk(player)
+				monster.move_astar(player)
 
 			#attack if close enough, if player is still alive
 			elif player.fighter.hp > 0:
@@ -773,7 +797,7 @@ class SplitterAI:
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and act_roll > 2:
 			#move toward player
 			if monster.distance_to(player) >= 2:
-				monster.move_dijk(player)
+				monster.move_astar(player)
 			#attack if close enough, if player is still alive
 			elif player.fighter.hp > 0:
 				type = monster.fighter.damage_type
@@ -791,7 +815,7 @@ class BasicUndead:
 		clock.schedule_turn(monster.fighter.speed, objects.index(monster))
 		if libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and damageRoll('1d4') > 1:
 			if monster.distance_to(player) >= 2:
-				monster.move_dijk(player)
+				monster.move_astar(player)
 			elif player.fighter.hp > 0:
 				type = monster.fighter.damage_type
 				dice = monster.fighter.damage_dice
@@ -806,7 +830,7 @@ class WolfAI:
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 20:
 			if monster.distance_to(player) >= 2:
-				monster.move_dijk(player)
+				monster.move_astar(player)
 			elif monster.fighter.hp <= 5 and monster.distance_to(player) <= 5 and monster.fighter.enraged == False:
 				message('The ' + monster.name.title() + ' howls with rage!', libtcod.red)
 				monster.fighter.enraged = True
@@ -829,9 +853,7 @@ class PoisonSpitterAI:
 		type = monster.fighter.damage_type
 		dice = monster.fighter.damage_dice
 		if monster.distance_to(player) <= 15 and monster.distance_to(player) > 5:
-			monster.move_dijk(player)
-			if libtcod.random_get_int(0, 1, 6) < 2:
-				message('You hear a hissing sound in the distance....', libtcod.yellow)
+			monster.move_astar(player)
 		elif monster.distance_to(player) <= 5 and player.fighter.poisoned == False and libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
 				message('The ' + monster.name.title() + ' spits poison at you!', libtcod.purple)
 				if monster.fighter.ranged_attack_roll(player.fighter) == 'hit':
@@ -842,7 +864,7 @@ class PoisonSpitterAI:
 					message('You dodged the poison spit!', libtcod.purple)
 				
 		elif monster.distance_to(player) <= 5 and player.fighter.poisoned == True and monster.distance_to(player) >= 2:
-			monster.move_dijk(player)
+			monster.move_astar(player)
 		elif monster.distance_to(player) <= 1:
 			monster.fighter.attack(player, type, dice)
 			
@@ -855,7 +877,7 @@ class ArcherAI:
 		dice = monster.fighter.damage_dice
 		range = monster.distance_to(player)
 		if 7 < range <=15:
-			monster.move_dijk(player)
+			monster.move_astar(player)
 		elif 2 <= range <= 7 and libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and monster.fighter.quiver > 0:
 			if libtcod.random_get_int(0, 1, 4) > 1:
 				monster.fighter.ranged_attack(player, type, dice)
@@ -864,9 +886,9 @@ class ArcherAI:
 			else:
 				monster.move_astar(player)
 		elif range <= 7 and not libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
-			monster.move_dijk(player)
+			monster.move_astar(player)
 		elif 2 <= range <= 7 and monster.fighter.quiver <= 0:
-			monster.move_dijk(player)
+			monster.move_astar(player)
 		elif range < 2:
 			monster.fighter.attack(player, type, dice)
 			
@@ -882,7 +904,7 @@ class AngryWolf:
 		monster.color = libtcod.red
 		range = monster.distance_to(player)
 		if range <=20 and range >= 2:
-			move_dijk(player)
+			move_astar(player)
 		if range < 2:
 			monster.fighter.attack(player, type, dice)
 			
@@ -1150,9 +1172,331 @@ def is_blocked(x, y):
 
 	return False
 	
-#############################
-# MAP GEN FROM TUTORIAL
-#############################
+##################################
+# DUNGEON GENERATOR FUNCTIONS
+##################################
+
+def generator_mixed():
+	global map, player, stairs, objects, items
+	dungeon = dungeonGenerator.dungeonGenerator(43, 40)
+	print(dungeon.width, dungeon.height, len(dungeon.grid))
+	dungeon.generateCaves(40, 4)
+	#clear out small islands
+	unconnected = dungeon.findUnconnectedAreas()
+	for area in unconnected:
+		if len(area) < 15:
+			for x, y in area:
+				dungeon.grid[x][y] = 0
+	#generate rooms and corridors
+	dungeon.placeRandomRooms(5, 9, 1, 1, 2000)
+	x, y = dungeon.findEmptySpace(3)
+	while x:
+		dungeon.generateCorridors('l', x, y)
+		x, y = dungeon.findEmptySpace(3)
+	#join everything up
+	dungeon.connectAllRooms(0)
+	unconnected = dungeon.findUnconnectedAreas()
+	dungeon.joinUnconnectedAreas(unconnected)
+	dungeon.pruneDeadends(70)
+	dungeon.placeWalls()
+	translate_tiles(dungeon)
+	map_rooms = []
+	for room in dungeon.rooms:
+		new_room = Rect(room.x, room.y, room.width, room.height)
+		map_rooms.append(new_room)
+	for room in map_rooms:
+		place_objects(room)
+	px, py = map_rooms[0].center()
+	player.x = px
+	player.y = py
+	stairs_x, stairs_y = map_rooms[-1].center()
+	stairs = Object(stairs_x, stairs_y, '>', 'stairs', libtcod.white, always_visible=True)
+	objects.append(stairs)
+	
+	
+
+def translate_tiles(dungeon):
+	for x, y, tile in dungeon:
+		if tile == dungeonGenerator.FLOOR:
+			map[x][y].blocked = False
+			map[x][y].block_sight = False
+		elif tile == dungeonGenerator.CAVE:
+			map[x][y].blocked = False
+			map[x][y].block_sight = False
+		elif tile == dungeonGenerator.WALL:
+			map[x][y].blocked = False
+			map[x][y].block_sight = False
+		elif tile == dungeonGenerator.DOOR:
+			place_door(x, y)
+
+##################################
+# MAZE GENERATION - GROWING TREE
+##################################
+
+#the grid of the maze
+#each cell of the maze is one of the following:
+    # '#' is wall
+    # '.' is empty space
+    # ',' is exposed but undetermined
+    # '?' is unexposed and undetermined
+	
+def start_maze(maze_height, maze_width):
+	global field, frontier
+	field = []
+
+	for y in range(maze_height):
+		row = []
+		for x in range(maze_width):
+			row.append('?')
+		field.append(row)
+
+	#list of coordinates of exposed but undetermined cells.
+	frontier = []
+
+def carve(y, x):
+    '''Make the cell at y,x a space.
+    
+    Update the fronteer and field accordingly.
+    Note: this does not remove the current cell from frontier, it only adds new cells.
+    '''
+    extra = []
+    field[y][x] = '.'
+    if x > 0:
+        if field[y][x-1] == '?':
+            field[y][x-1] = ','
+            extra.append((y,x-1))
+    if x < maze_width - 1:
+        if field[y][x+1] == '?':
+            field[y][x+1] = ','
+            extra.append((y,x+1))
+    if y > 0:
+        if field[y-1][x] == '?':
+            field[y-1][x] = ','
+            extra.append((y-1,x))
+    if y < maze_height - 1:
+        if field[y+1][x] == '?':
+            field[y+1][x] = ','
+            extra.append((y+1,x))
+    random.shuffle(extra)
+    frontier.extend(extra)
+
+def harden(y, x):
+    '''Make the cell at y,x a wall.
+    '''
+    field[y][x] = '#'
+
+
+
+def check(y, x, nodiagonals = True):
+    '''Test the cell at y,x: can this cell become a space?
+    
+    True indicates it should become a space,
+    False indicates it should become a wall.
+    '''
+    
+    edgestate = 0
+    if x > 0:
+        if field[y][x-1] == '.':
+            edgestate += 1
+    if x < maze_width-1:
+        if field[y][x+1] == '.':
+            edgestate += 2
+    if y > 0:
+        if field[y-1][x] == '.':
+            edgestate += 4
+    if y < maze_height-1:
+        if field[y+1][x] == '.':
+            edgestate += 8
+    
+    if nodiagonals:
+        #if this would make a diagonal connecition, forbid it
+            #the following steps make the test a bit more complicated and are not necessary,
+            #but without them the mazes don't look as good
+        if edgestate == 1:
+            if x < maze_width-1:
+                if y > 0:
+                    if field[y-1][x+1] == '.':
+                        return False
+                if y < maze_height-1:
+                    if field[y+1][x+1] == '.':
+                        return False
+            return True
+        elif edgestate == 2:
+            if x > 0:
+                if y > 0:
+                    if field[y-1][x-1] == '.':
+                        return False
+                if y < maze_height-1:
+                    if field[y+1][x-1] == '.':
+                        return False
+            return True
+        elif edgestate == 4:
+            if y < maze_height-1:
+                if x > 0:
+                    if field[y+1][x-1] == '.':
+                        return False
+                if x < maze_width-1:
+                    if field[y+1][x+1] == '.':
+                        return False
+            return True
+        elif edgestate == 8:
+            if y > 0:
+                if x > 0:
+                    if field[y-1][x-1] == '.':
+                        return False
+                if x < maze_width-1:
+                    if field[y-1][x+1] == '.':
+                        return False
+            return True
+        return False
+    else:
+        #diagonal walls are permitted
+        #if  [1,2,4,8].count(edgestate):
+         #   return True
+        return False
+		
+def do_maze(height, width, branchrate, backtrack):
+	global map, maze_height, maze_width
+	#setup map
+	
+	maze_height = height
+	maze_width = width
+	
+	map = [[ Tile(True)
+		for y in range(MAP_HEIGHT) ]
+			for x in range(MAP_WIDTH) ]
+	
+	start_maze(maze_height, maze_width)
+
+	#choose a original point at random and carve it out.
+	xchoice = random.randint(0, maze_width-1)
+	ychoice = random.randint(0, maze_height-1)
+	carve(ychoice,xchoice)
+	player.x = xchoice + 1
+	player.y = ychoice + 1
+
+	#parameter branchrate:
+		#zero is unbiased, positive will make branches more frequent, negative will cause long passages
+		#this controls the position in the list chosen: positive makes the start of the list more likely,
+		#negative makes the end of the list more likely
+
+		#large negative values make the original point obvious
+
+		#try values between -10, 10
+	#branchrate = 2
+
+	from math import e
+	
+	#growing tree algorithm
+	if backtrack == False:
+		while(len(frontier)):
+			#select a random edge
+			pos = random.random()
+			pos = pos**(e**-branchrate)
+			choice = frontier[int(pos*len(frontier))]
+			if check(*choice):
+				carve(*choice)
+			else:
+				harden(*choice)
+			frontier.remove(choice)
+	else:   #recursive backtracker algorithm(?)
+		while(len(frontier)):
+			pos = len(frontier) - 1
+			choice = frontier[pos]
+			if check(*choice):
+				carve(*choice)
+			else:
+				harden(*choice)
+			frontier.remove(choice)
+	
+		
+	#set unexposed cells to be walls
+	for y in range(maze_height):
+		for x in range(maze_width):
+			if field[y][x] == '?':
+				field[y][x] = '#'
+				
+	#draw border around maze
+	for y in range(0, MAP_HEIGHT-1):
+		map[0][y].blocked = True
+		map[0][y].block_sight = True
+		map[MAP_WIDTH-1][y].blocked = True
+		map[MAP_WIDTH-1][y].block_sight = True
+	for x in range(0, MAP_WIDTH-1):
+		map[x][MAP_HEIGHT-1].blocked = True
+		map[x][MAP_HEIGHT-1].block_sight = True
+		map[x][0].blocked = True
+		map[x][0].block_sight = True
+		
+				
+	#turn field[] into map[] for rendering/playing
+	# for y in range(maze_height):
+		# for x in range(maze_width):
+			# if field[y][x] == '.':
+				# map[x][y].blocked = False
+				# map[x][y].block_sight = False
+			# elif field[y][x] == '#':
+				# map[x][y].blocked = True
+				# map[x][y].block_sight = True
+				
+	#turn field[] into map[] for rendering/playing
+	for y in range(maze_height):
+		for x in range(maze_width):
+			if field[y][x] == '.':
+				map[x+1][y+1].blocked = False
+				map[x+1][y+1].block_sight = False
+			elif field[y][x] == '#':
+				map[x+1][y+1].blocked = True
+				map[x+1][y+1].block_sight = True
+				
+	place_maze_monsters()
+				
+def place_maze_monsters():
+	global map, objects, stairs
+	#chances for each monster
+	monster_chances = {}
+	#monster_chances['clock golem'] = 0 #testing testing 1 2 3
+	monster_chances['orc'] = 60 #orc always shows up
+	monster_chances['orc archer'] = 35 #orc archers always show up, for now
+	monster_chances['wolf'] = 60 #wolf always shows up
+	monster_chances['rattlesnake'] = 20 #snake always shows up, for now
+	monster_chances['zombie'] = 20
+	monster_chances['skel_warrior'] = 40
+	monster_chances['gelatinous mass'] = 20
+	monster_chances['elite orc archer'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['devil archer'] = from_dungeon_level([[15, 11], [20, 13]])
+	monster_chances['orc captain'] = from_dungeon_level([[15, 5], [20, 7]])
+	monster_chances['flaming ooze'] = from_dungeon_level([[15, 6], [20, 8]])
+	monster_chances['sparking goop'] = from_dungeon_level([[15, 10], [20, 12]])
+	monster_chances['toxic slime'] = from_dungeon_level([[15, 13], [20, 15]])
+	monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+	monster_chances['naga hatchling'] = from_dungeon_level([[20, 8], [25, 10]])
+	monster_chances['naga'] = from_dungeon_level([[10, 10], [15, 12]])
+				
+	#spawn monsters in maze dead-ends
+	dead_ends = count_dead_ends()
+	random.shuffle(dead_ends)
+	stairs_x, stairs_y = dead_ends[0]
+	stairs = Object(stairs_x, stairs_y, '>', 'stairs', libtcod.white, always_visible=True)
+	del dead_ends[0]
+	for tile in range(len(dead_ends) - 1):
+		tile_x, tile_y = dead_ends[tile]
+		if tile_x != player.x and tile_y != player.y:
+			choice = random_choice(monster_chances)
+			mutation_roll = libtcod.random_get_int(0, 1, 6) + dungeon_level
+			mutation_num = 0
+			if mutation_roll > 6:
+				mutation_num = mutation_roll - 6
+				if mutation_num > 2:
+					mutation_num = 2
+			if damageRoll('1d4') > 2:
+				mon_x, mon_y = dead_ends[tile]
+				spawn_monster(mon_x, mon_y, choice, mutation_roll, mutation_num, clock)		
+	objects.append(stairs)
+
+#######################################
+# TUTORIAL MAP GEN
+#######################################	
 
 def create_room(room):
 	global map
@@ -1175,7 +1519,7 @@ def create_v_tunnel(y1, y2, x):
 	for y in range(min(y1, y2), max(y1, y2) + 1):
 		map[x][y].blocked = False
 		map[x][y].block_sight = False
-
+	
 def make_map():
 	global map, objects, stairs
 
@@ -2766,13 +3110,17 @@ def target_menu():
 	index = menu('Choose a target:', options, INVENTORY_WIDTH)
 
 def next_level():
-	global dungeon_level
+	global dungeon_level, items, objects, clock, map
 	#advance to the next dungeon level
 	message('You take a moment to rest, and recover your strength.', libtcod.light_violet)
 	player.fighter.heal(player.fighter.max_hp / 2) #recover 50% health
-
 	message('After a rare moment of peace, you descend deeper into the labyrinth...', libtcod.red)
 	dungeon_level += 1
+	for x in range(MAP_WIDTH):
+		for y in range(MAP_HEIGHT):
+			map[x][y].blocked = True
+			map[x][y].block_sight = True
+			map[x][y].door = False
 	clock.schedule = {key:val for key, val in clock.schedule.items() if val == 'player'}
 	while items: items.pop()
 	while objects: objects.pop()
@@ -2781,8 +3129,14 @@ def next_level():
 	#print(objects)
 	#print(clock.schedule)
 	#print(clock.schedule)
+	#use BSP generator
 	#make_bsp()
-	make_map() #create a new level
+	#use maze generator
+	do_maze(MAP_HEIGHT-2, MAP_WIDTH-2, 2, False)
+	#use cave/mixed generator
+	#generator_mixed()
+	#else:
+	#	make_map() #create a new level
 	initialize_fov()
 
 	
@@ -2794,6 +3148,17 @@ def load_customfont(): #TILES VERSION
 	for y in range(5,20):
 		libtcod.console_map_ascii_codes_to_font(a, 32, 0, y)
 		a += 32
+		
+def assign_item_names:
+	global potions, wands, scrolls
+	potions = {'healing': '', 'antidote': '', 'recharge': ''}
+	wands = {'lightning': '', 'magic missile': '', 'petrification': '', 'death': '', 'confusion': '', 'transposition': '', 'teleportation': '', 'fireball': ''}
+	scrolls = {}
+	potion_adj = ['sparkling', 'viscous', 'slimy', 'bubbly', 'milky', 'vibrant', 'cloudy']
+	potion_col = ['blue', 'red', 'purple', 'silver', 'orange', 'gold', 'pink']
+	random.shuffle(potion_adj)
+	random.shuffle(potion_col)
+	
 
 def new_game(choice):
 	global player, objects, items, inventory, game_msgs, kill_count, game_state, dungeon_level, clock
@@ -2834,7 +3199,7 @@ def new_game(choice):
 		clock.schedule_turn(player.fighter.speed, objects.index(player))
 		
 	#generate map (not drawn yet)
-	dungeon_level = 1
+	dungeon_level = 5
 	#make_bsp()
 	make_map()
 	initialize_fov()
