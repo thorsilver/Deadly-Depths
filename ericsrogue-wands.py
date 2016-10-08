@@ -4,6 +4,7 @@ import textwrap
 import shelve
 import random
 import time
+import dungeonGenerator
  
 #actual size of the window
 SCREEN_WIDTH = 80
@@ -159,13 +160,14 @@ class Ticker:
 				return 'player'
 		
 	def next_turn(self):
-		global key, mouse
+		global objects, player, key, mouse
 		things_to_do = self.schedule.pop(self.ticks, [])
 		#print(self.ticks)
 		#print(len(things_to_do))
 		#print(len(objects))
 		for obj in things_to_do:
-			if objects[obj] == player:# and self.last_turn != 'player':
+			print(obj, len(objects))
+			if objects[obj] == player:
 				#libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS|libtcod.EVENT_MOUSE,key,mouse)
 				key = libtcod.console_wait_for_keypress(True)
 				#if key.vk == libtcod.KEY_ENTER and key.lalt:
@@ -1169,6 +1171,63 @@ def is_blocked(x, y):
 			return True
 
 	return False
+	
+##################################
+# DUNGEON GENERATOR FUNCTIONS
+##################################
+
+def generator_mixed():
+	global map, player, stairs, objects, items
+	dungeon = dungeonGenerator.dungeonGenerator(43, 40)
+	print(dungeon.width, dungeon.height, len(dungeon.grid))
+	dungeon.generateCaves(40, 4)
+	#clear out small islands
+	unconnected = dungeon.findUnconnectedAreas()
+	for area in unconnected:
+		if len(area) < 15:
+			for x, y in area:
+				dungeon.grid[x][y] = 0
+	#generate rooms and corridors
+	dungeon.placeRandomRooms(5, 9, 1, 1, 2000)
+	x, y = dungeon.findEmptySpace(3)
+	while x:
+		dungeon.generateCorridors('l', x, y)
+		x, y = dungeon.findEmptySpace(3)
+	#join everything up
+	dungeon.connectAllRooms(0)
+	unconnected = dungeon.findUnconnectedAreas()
+	dungeon.joinUnconnectedAreas(unconnected)
+	dungeon.pruneDeadends(70)
+	dungeon.placeWalls()
+	translate_tiles(dungeon)
+	map_rooms = []
+	for room in dungeon.rooms:
+		new_room = Rect(room.x, room.y, room.width, room.height)
+		map_rooms.append(new_room)
+	for room in map_rooms:
+		place_objects(room)
+	px, py = map_rooms[0].center()
+	player.x = px
+	player.y = py
+	stairs_x, stairs_y = map_rooms[-1].center()
+	stairs = Object(stairs_x, stairs_y, '>', 'stairs', libtcod.white, always_visible=True)
+	objects.append(stairs)
+	
+	
+
+def translate_tiles(dungeon):
+	for x, y, tile in dungeon:
+		if tile == dungeonGenerator.FLOOR:
+			map[x][y].blocked = False
+			map[x][y].block_sight = False
+		elif tile == dungeonGenerator.CAVE:
+			map[x][y].blocked = False
+			map[x][y].block_sight = False
+		elif tile == dungeonGenerator.WALL:
+			map[x][y].blocked = False
+			map[x][y].block_sight = False
+		elif tile == dungeonGenerator.DOOR:
+			place_door(x, y)
 
 ##################################
 # MAZE GENERATION - GROWING TREE
@@ -1292,11 +1351,11 @@ def check(y, x, nodiagonals = True):
         return False
     else:
         #diagonal walls are permitted
-        if  [1,2,4,8].count(edgestate):
-            return True
+        #if  [1,2,4,8].count(edgestate):
+         #   return True
         return False
 		
-def do_maze(height, width, branchrate):
+def do_maze(height, width, branchrate, backtrack):
 	global map, maze_height, maze_width
 	#setup map
 	
@@ -1329,26 +1388,26 @@ def do_maze(height, width, branchrate):
 	from math import e
 	
 	#growing tree algorithm
-	while(len(frontier)):
-		#select a random edge
-		pos = random.random()
-		pos = pos**(e**-branchrate)
-		choice = frontier[int(pos*len(frontier))]
-		if check(*choice):
-			carve(*choice)
-		else:
-			harden(*choice)
-		frontier.remove(choice)
-		
-	#recursive backtracker algorithm(?)
-	# while(len(frontier)):
-		# pos = len(frontier) - 1
-		# choice = frontier[pos]
-		# if check(*choice):
-			# carve(*choice)
-		# else:
-			# harden(*choice)
-		# frontier.remove(choice)
+	if backtrack == False:
+		while(len(frontier)):
+			#select a random edge
+			pos = random.random()
+			pos = pos**(e**-branchrate)
+			choice = frontier[int(pos*len(frontier))]
+			if check(*choice):
+				carve(*choice)
+			else:
+				harden(*choice)
+			frontier.remove(choice)
+	else:   #recursive backtracker algorithm(?)
+		while(len(frontier)):
+			pos = len(frontier) - 1
+			choice = frontier[pos]
+			if check(*choice):
+				carve(*choice)
+			else:
+				harden(*choice)
+			frontier.remove(choice)
 	
 		
 	#set unexposed cells to be walls
@@ -1421,16 +1480,18 @@ def place_maze_monsters():
 	stairs = Object(stairs_x, stairs_y, '>', 'stairs', libtcod.white, always_visible=True)
 	del dead_ends[0]
 	for tile in range(len(dead_ends) - 1):
-		choice = random_choice(monster_chances)
-		mutation_roll = libtcod.random_get_int(0, 1, 6) + dungeon_level
-		mutation_num = 0
-		if mutation_roll > 6:
-			mutation_num = mutation_roll - 6
-			if mutation_num > 2:
-				mutation_num = 2
-		if damageRoll('1d4') > 2:
-			mon_x, mon_y = dead_ends[tile]
-			spawn_monster(mon_x, mon_y, choice, mutation_roll, mutation_num, clock)		
+		tile_x, tile_y = dead_ends[tile]
+		if tile_x != player.x and tile_y != player.y:
+			choice = random_choice(monster_chances)
+			mutation_roll = libtcod.random_get_int(0, 1, 6) + dungeon_level
+			mutation_num = 0
+			if mutation_roll > 6:
+				mutation_num = mutation_roll - 6
+				if mutation_num > 2:
+					mutation_num = 2
+			if damageRoll('1d4') > 2:
+				mon_x, mon_y = dead_ends[tile]
+				spawn_monster(mon_x, mon_y, choice, mutation_roll, mutation_num, clock)		
 	objects.append(stairs)
 
 #######################################
@@ -3049,13 +3110,17 @@ def target_menu():
 	index = menu('Choose a target:', options, INVENTORY_WIDTH)
 
 def next_level():
-	global dungeon_level
+	global dungeon_level, items, objects, clock, map
 	#advance to the next dungeon level
 	message('You take a moment to rest, and recover your strength.', libtcod.light_violet)
 	player.fighter.heal(player.fighter.max_hp / 2) #recover 50% health
-
 	message('After a rare moment of peace, you descend deeper into the labyrinth...', libtcod.red)
 	dungeon_level += 1
+	for x in range(MAP_WIDTH):
+		for y in range(MAP_HEIGHT):
+			map[x][y].blocked = True
+			map[x][y].block_sight = True
+			map[x][y].door = False
 	clock.schedule = {key:val for key, val in clock.schedule.items() if val == 'player'}
 	while items: items.pop()
 	while objects: objects.pop()
@@ -3064,8 +3129,12 @@ def next_level():
 	#print(objects)
 	#print(clock.schedule)
 	#print(clock.schedule)
+	#use BSP generator
 	#make_bsp()
-	do_maze(MAP_HEIGHT-2, MAP_WIDTH-2, 2)
+	#use maze generator
+	do_maze(MAP_HEIGHT-2, MAP_WIDTH-2, 2, False)
+	#use cave/mixed generator
+	#generator_mixed()
 	#else:
 	#	make_map() #create a new level
 	initialize_fov()
@@ -3079,6 +3148,17 @@ def load_customfont(): #TILES VERSION
 	for y in range(5,20):
 		libtcod.console_map_ascii_codes_to_font(a, 32, 0, y)
 		a += 32
+		
+def assign_item_names:
+	global potions, wands, scrolls
+	potions = {'healing': '', 'antidote': '', 'recharge': ''}
+	wands = {'lightning': '', 'magic missile': '', 'petrification': '', 'death': '', 'confusion': '', 'transposition': '', 'teleportation': '', 'fireball': ''}
+	scrolls = {}
+	potion_adj = ['sparkling', 'viscous', 'slimy', 'bubbly', 'milky', 'vibrant', 'cloudy']
+	potion_col = ['blue', 'red', 'purple', 'silver', 'orange', 'gold', 'pink']
+	random.shuffle(potion_adj)
+	random.shuffle(potion_col)
+	
 
 def new_game(choice):
 	global player, objects, items, inventory, game_msgs, kill_count, game_state, dungeon_level, clock
